@@ -1,0 +1,12 @@
+# ── User-edited configuration scripts ────────────────────────────────────────
+config_pert.m
+
+# ── Computation scripts (frequently edited per study) ─────────────────────────
+pt_load_leadfields.m
+
+# ── MATLAB compiled files ─────────────────────────────────────────────────────
+*.asv
+*.m~
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
