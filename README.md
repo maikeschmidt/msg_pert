@@ -61,6 +61,11 @@ Phase 1 — Geometry generation
 
 Phase 2 — Analysis  (run_perturbation_analysis)
 
+  msg_fwd leadfield output
+         │
+         ├─ pt_load_leadfields      load BEM/FEM/BS/sphere leadfields for all
+         │                          perturbed geometries → leadfields_organised.mat
+         │
   leadfields_organised.mat
          │
          ├─ pt_compute_rsq          r² per source, per orientation, per model
@@ -176,14 +181,27 @@ produce `leadfields_organised.mat`.
 
 ### Step 6: Run perturbation analysis (Phase 2)
 
+Before running, open `pt_load_leadfields.m` and set the `have_<method>` flags
+to match the forward models you computed in msg_fwd:
+
+```matlab
+have_bem    = true;    % BEM via Helsinki BEM Framework
+have_fem    = false;   % FEM via DUNEuro
+have_bslaw  = false;   % Biot-Savart (infinite space)
+have_sphere = false;   % Single sphere (Sarvas analytical)
+```
+
+Then run the full pipeline:
+
 ```matlab
 run_perturbation_analysis;
 ```
 
-Or run individual analysis scripts standalone:
+Or run individual steps standalone:
 
 ```matlab
-pt_compute_rsq;            % compute r² (run first)
+pt_load_leadfields;        % load and organise leadfields (run first)
+pt_compute_rsq;            % compute r² (requires leadfields_organised.mat)
 pt_plot_curves;            % r² vs cord distance
 pt_plot_displacement;      % displacement vs r² (sensor mode)
 pt_compute_table;          % summary tables
@@ -201,6 +219,7 @@ pt_compute_table;          % summary tables
 | `pt_generate_source_shifts` | 1 | Generate 18 geometry files for ±2/4/6 mm source-space shifts along X/Y/Z |
 | `pt_generate_sensor_shifts` | 1 | Generate 24 geometry files for 3 bundles × 8 random sensor-array shifts |
 | `run_perturbation_analysis` | 2 | Master script: runs all analysis steps in order |
+| `pt_load_leadfields` | 2 | Load and organise BEM/FEM/BS/sphere leadfields for all perturbed geometries; saves `leadfields_organised.mat` |
 | `pt_compute_rsq` | 2 | Compute per-source r² between each shifted model and the original |
 | `pt_plot_curves` | 2 | r² vs cord distance figures (individual shift axes / bundles + overviews) |
 | `pt_plot_displacement` | 2 | Median displacement vs r² scatter plots (sensor mode; requires shift vectors in config) |
