@@ -78,10 +78,10 @@
 
 geoms_path           = 'D:\Simulations\Pertubations\geometries';   % SET THIS: path to original geometry .mat file
 perturbed_geoms_path = 'D:\Simulations\Pertubations\geometries';   % SET THIS: output path for perturbed geometry files
-forward_fields_base  = 'D:\Simulations\Pertubations\fields';   % SET THIS: path to leadfield .mat files (from msg_fwd)
+forward_fields_base  = 'D:\Simulations\Pertubations\forward_fields';   % SET THIS: path to leadfield .mat files (from msg_fwd)
 save_base_dir        = 'D:\Simulations\Pertubations\results';   % SET THIS: base path for figures and tables
 
-base_geom_name       = 'original';   % SET THIS: stem of original geometry file,
+base_geom_name       = 'geometries_original';   % SET THIS: stem of original geometry file,
                              %   e.g. 'geometries_sub001_experimental'
                              %   File loaded: <geoms_path>/<base_geom_name>.mat
 
