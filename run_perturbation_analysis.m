@@ -57,9 +57,6 @@ fprintf('  Department of Imaging Neuroscience\n\n');
 
 config_pert;
 
-source_rsq_file = fullfile(forward_fields_base, 'pert_source_rsq.mat');
-sensor_rsq_file = fullfile(forward_fields_base, 'pert_sensor_rsq.mat');
-
 % STEP 1: Load and organise perturbed leadfields
 % Configure which methods are available (BEM/FEM/BS/sphere) in pt_load_leadfields.m
 % before running this script.
@@ -85,6 +82,9 @@ catch err
     fprintf('ERROR: pt_compute_rsq failed:\n  %s\n', err.message);
     return;
 end
+
+source_rsq_file = fullfile(forward_fields_base, 'pert_source_rsq.mat');
+sensor_rsq_file = fullfile(forward_fields_base, 'pert_sensor_rsq.mat');
 
 have_source_rsq = isfile(source_rsq_file);
 have_sensor_rsq = isfile(sensor_rsq_file);

@@ -29,9 +29,9 @@
 %          Variable: leadfield_cord   | Scale: 1e15 (T/nAm → fT/nAm)
 %   FEM:   <forward_fields_base>/geometries_<geom>/cord_leadfield_<geom>_fem_<array>.mat
 %          Variable: leadfield_ft     | Scale: 1 (already fT/nAm)
-%   BS:    <bslaw_path>/leadfield_<geom>_bslaw_<array>.mat
+%   BS:    <bslaw_path>/leadfield_geometries_<geom>_bslaw_<array>.mat
 %          Variable: leadfield_bs     | Scale: 1 (already fT/nAm)
-%   Sphere:<sphere_path>/leadfield_<geom>_sphere_<array>.mat
+%   Sphere:<sphere_path>/leadfield_geometries_<geom>_sphere_<array>.mat
 %          Variable: leadfield_sphere | Scale: 1 (already fT/nAm)
 %
 %   BEM and FEM files are looked up in per-geometry subfolders under the
@@ -40,8 +40,8 @@
 %
 % OUTPUT FILE:
 %   <forward_fields_base>/leadfields_organised.mat  containing:
-%     leadfields          — struct with one field per loaded key
-%                           (e.g. leadfields.bem_sub001_source_X_p2mm_front)
+%     leadfields          — struct with one field per geometry key
+%                           (e.g. leadfields.original_source_original)
 %                           Each field contains .VD, .RC, .LR cell arrays
 %                           [n_sensor_axes x n_sources], plus metadata fields
 %     abs_max_per_source  — struct of peak absolute amplitudes per source
@@ -55,10 +55,8 @@
 % NOTES:
 %   - Only methods with have_<method> = true are searched
 %   - Missing files produce a warning and are skipped (not an error)
-%   - The original (unshifted) geometry is always included under both
-%     sensitivity_ref_key and sensor_sensitivity_ref_key
-%   - If both source-shift and sensor-shift originals are the same geometry,
-%     only one copy is loaded (keys differ so both appear in leadfields)
+%   - All arrays (front/back) and methods for a geometry are accumulated
+%     under the same geometry key, matching sensitivity_ref_key
 %
 % REPOSITORY:
 %   https://github.com/maikeschmidt/msg_pert
@@ -110,7 +108,7 @@ sphere_path = 'D:\Simulations\Pertubations\fields\single_sphere';   % override i
 % BUILD LIST OF ALL GEOMETRY NAMES TO LOAD
 % =========================================================================
 % Collect all unique geometry names: original + source shifts + sensor shifts.
-% Each key is a full geometry stem (e.g. 'geometries_sub001_source_X_p2mm').
+% Each key is a full geometry stem (e.g. 'original_source_X_p2mm').
 % Duplicates are removed (ref keys may overlap if you ran both shift types
 % on the same original geometry file).
 
@@ -125,22 +123,28 @@ fprintf('  Methods: BEM=%d  FEM=%d  BS=%d  Sphere=%d\n\n', ...
 
 
 % =========================================================================
-% LOAD ALL LEADFIELD FILES
+% LOAD AND ORGANISE ALL LEADFIELD FILES
 % =========================================================================
+% organise_leadfield is called per file using geom_full as the key, so all
+% arrays (front/back) and methods for a geometry accumulate under the same
+% name that sensitivity_ref_key and sensor_sensitivity_ref_key expect.
 
-lf_raw    = struct();   % raw FieldTrip leadfield structs, keyed by model_key
 n_loaded  = 0;
 
+fprintf('Loading and organising leadfields...\n');
+leadfields = struct();
+abs_max_per_source = struct();
+
 for g = 1:numel(all_geom_names)
-    geom_full = all_geom_names{g};   % full geometry stem, e.g. 'geometries_sub001_...'
+    geom_full  = all_geom_names{g};   % e.g. 'original_source_original'
     geom_short = regexprep(geom_full, '^geometries[_-]?', '');
 
-    fprintf('  [%d/%d] %s\n', g, numel(all_geom_names), geom_short);
+    fprintf('  [%d/%d] %s\n', g, numel(all_geom_names), geom_full);
 
     % ------------------------------------------------------------------
     % BEM
     % Files: <bem_path>/geometries_<geom>/leadfield_<geom_short>_bem_<array>.mat
-    % Variable: leadfield_cord
+    % Variable: leadfield_cord   | Scale: 1e15 (T/nAm → fT/nAm)
     % ------------------------------------------------------------------
     if have_bem
         bem_subdir = fullfile(bem_path, ['geometries_' geom_short]);
@@ -152,29 +156,25 @@ for g = 1:numel(all_geom_names)
             tok   = regexp(fname, ...
                 ['leadfield_' geom_short '_bem_(.+)\.mat'], 'tokens');
             if isempty(tok); continue; end
-            arr      = tok{1}{1};
-            key      = ['bem_' geom_short '_' arr];
+            arr = tok{1}{1};
 
             tmp = load(fullfile(bem_subdir, fname), 'leadfield_cord');
             if ~isfield(tmp, 'leadfield_cord')
                 warning('Variable leadfield_cord not found in: %s', fname);
                 continue
             end
-            lf_raw.(key)   = tmp.leadfield_cord;
-            lf_raw.(key).unit_scale = 1e15;   % T/nAm → fT/nAm
+            [leadfields, abs_max_per_source] = organise_leadfield( ...
+                leadfields, abs_max_per_source, tmp.leadfield_cord, ...
+                geom_full, 1e15, orientation_labels);
             n_loaded = n_loaded + 1;
-            fprintf('    BEM: %s\n', key);
-        end
-
-        if numel(bem_files) == 0
-            % no warning — geometry may only have sensor or source shifts
+            fprintf('    BEM: %s (%s)\n', geom_full, arr);
         end
     end
 
     % ------------------------------------------------------------------
     % FEM
     % Files: <fem_path>/geometries_<geom>/cord_leadfield_<geom_short>_fem_<array>.mat
-    % Variable: leadfield_ft
+    % Variable: leadfield_ft   | Scale: 1 (already fT/nAm)
     % ------------------------------------------------------------------
     if have_fem
         fem_subdir = fullfile(fem_path, ['geometries_' geom_short]);
@@ -186,25 +186,25 @@ for g = 1:numel(all_geom_names)
             tok   = regexp(fname, ...
                 ['cord_leadfield_' geom_short '_fem_(.+)\.mat'], 'tokens');
             if isempty(tok); continue; end
-            arr      = tok{1}{1};
-            key      = ['fem_' geom_short '_' arr];
+            arr = tok{1}{1};
 
             tmp = load(fullfile(fem_subdir, fname), 'leadfield_ft');
             if ~isfield(tmp, 'leadfield_ft')
                 warning('Variable leadfield_ft not found in: %s', fname);
                 continue
             end
-            lf_raw.(key)   = tmp.leadfield_ft;
-            lf_raw.(key).unit_scale = 1;   % already fT/nAm
+            [leadfields, abs_max_per_source] = organise_leadfield( ...
+                leadfields, abs_max_per_source, tmp.leadfield_ft, ...
+                geom_full, 1, orientation_labels);
             n_loaded = n_loaded + 1;
-            fprintf('    FEM: %s\n', key);
+            fprintf('    FEM: %s (%s)\n', geom_full, arr);
         end
     end
 
     % ------------------------------------------------------------------
     % BIOT-SAVART
-    % Files: <bslaw_path>/leadfield_<geom_short>_bslaw_<array>.mat  (flat)
-    % Variable: leadfield_bs
+    % Files: <bslaw_path>/leadfield_geometries_<geom_full>_bslaw_<array>.mat
+    % Variable: leadfield_bs   | Scale: 1 (already fT/nAm)
     % ------------------------------------------------------------------
     if have_bslaw
         bs_files = dir(fullfile(bslaw_path, ...
@@ -215,25 +215,25 @@ for g = 1:numel(all_geom_names)
             tok   = regexp(fname, ...
                 ['leadfield_geometries_' geom_full '_bslaw_(.+)\.mat'], 'tokens');
             if isempty(tok); continue; end
-            arr      = tok{1}{1};
-            key      = ['bslaw_' geom_full '_' arr];
+            arr = tok{1}{1};
 
             tmp = load(fullfile(bslaw_path, fname), 'leadfield_bs');
             if ~isfield(tmp, 'leadfield_bs')
                 warning('Variable leadfield_bs not found in: %s', fname);
                 continue
             end
-            lf_raw.(key)   = tmp.leadfield_bs;
-            lf_raw.(key).unit_scale = 1;   % already fT/nAm
+            [leadfields, abs_max_per_source] = organise_leadfield( ...
+                leadfields, abs_max_per_source, tmp.leadfield_bs, ...
+                geom_full, 1, orientation_labels);
             n_loaded = n_loaded + 1;
-            fprintf('    BS:  %s\n', key);
+            fprintf('    BS:  %s (%s)\n', geom_full, arr);
         end
     end
 
     % ------------------------------------------------------------------
     % SINGLE SPHERE
-    % Files: <sphere_path>/leadfield_<geom_short>_sphere_<array>.mat  (flat)
-    % Variable: leadfield_sphere
+    % Files: <sphere_path>/leadfield_geometries_<geom_full>_sphere_<array>.mat
+    % Variable: leadfield_sphere   | Scale: 1 (already fT/nAm)
     % ------------------------------------------------------------------
     if have_sphere
         sp_files = dir(fullfile(sphere_path, ...
@@ -244,23 +244,23 @@ for g = 1:numel(all_geom_names)
             tok   = regexp(fname, ...
                 ['leadfield_geometries_' geom_full '_sphere_(.+)\.mat'], 'tokens');
             if isempty(tok); continue; end
-            arr      = tok{1}{1};
-            key      = ['sphere_' geom_full '_' arr];
+            arr = tok{1}{1};
 
             tmp = load(fullfile(sphere_path, fname), 'leadfield_sphere');
             if ~isfield(tmp, 'leadfield_sphere')
                 warning('Variable leadfield_sphere not found in: %s', fname);
                 continue
             end
-            lf_raw.(key)   = tmp.leadfield_sphere;
-            lf_raw.(key).unit_scale = 1;   % already fT/nAm
+            [leadfields, abs_max_per_source] = organise_leadfield( ...
+                leadfields, abs_max_per_source, tmp.leadfield_sphere, ...
+                geom_full, 1, orientation_labels);
             n_loaded = n_loaded + 1;
-            fprintf('    Sp:  %s\n', key);
+            fprintf('    Sp:  %s (%s)\n', geom_full, arr);
         end
     end
 end
 
-fprintf('\nLoaded %d leadfield files.\n\n', n_loaded);
+fprintf('\nLoaded and organised %d leadfield files.\n\n', n_loaded);
 
 if n_loaded == 0
     error(['No leadfield files found. Check that:\n' ...
@@ -270,34 +270,8 @@ if n_loaded == 0
            '  3. msg_fwd has been run on the perturbed geometry files']);
 end
 
-
-% =========================================================================
-% ORGANISE INTO LEADFIELDS STRUCT
-% =========================================================================
-% Uses organise_leadfield() from msg_fwd/functions/ (added to path by
-% pt_add_functions). Splits each leadfield matrix into VD/RC/LR cell arrays
-% and computes peak absolute amplitude per source.
-
-fprintf('Organising leadfields by source and orientation...\n');
-leadfields = struct();
-abs_max_per_source = struct();
-
-raw_keys = fieldnames(lf_raw);
-
-for k = 1:numel(raw_keys)
-    key        = raw_keys{k};
-    lf_struct  = lf_raw.(key);
-    unit_scale = lf_struct.unit_scale;
-    lf_struct  = rmfield(lf_struct, 'unit_scale');   % remove temp field
-
-    [leadfields, abs_max_per_source] = organise_leadfield( ...
-        leadfields, abs_max_per_source, lf_struct, key, unit_scale, orientation_labels);
-
-    fprintf('  Organised: %s\n', key);
-end
-
 loaded_models = fieldnames(leadfields);
-fprintf('\nOrganised %d model configurations.\n', numel(loaded_models));
+fprintf('Organised %d model configurations.\n', numel(loaded_models));
 
 
 % =========================================================================

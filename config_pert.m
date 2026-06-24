@@ -15,9 +15,11 @@
 %     save_base_dir        - Base path for saving figures and tables
 %
 %   Base geometry:
-%     base_geom_name       - Stem of the original geometry file, e.g.
-%                            'geometries_sub001_experimental' — the file
-%                            <geoms_path>/<base_geom_name>.mat is loaded
+%     base_geom_name       - Short stem used in leadfield file names,
+%                            WITHOUT the leading 'geometries_' prefix.
+%                            e.g. if files are named
+%                              leadfield_geometries_sub001_source_original_bslaw_back.mat
+%                            set base_geom_name = 'sub001'
 %
 %   Source shift parameters (18 configs: ±2,±4,±6 mm × X,Y,Z):
 %     source_shift_mm      - Shift magnitudes, e.g. [2 4 6] mm
@@ -81,9 +83,12 @@ perturbed_geoms_path = 'D:\Simulations\Pertubations\geometries';   % SET THIS: o
 forward_fields_base  = 'D:\Simulations\Pertubations\fields';   % SET THIS: path to leadfield .mat files (from msg_fwd)
 save_base_dir        = 'D:\Simulations\Pertubations\results';   % SET THIS: base path for figures and tables
 
-base_geom_name       = 'original';   % SET THIS: stem of original geometry file,
-                             %   e.g. 'geometries_sub001_experimental'
-                             %   File loaded: <geoms_path>/<base_geom_name>.mat
+base_geom_name       = 'original';   % SET THIS: short stem used in file names,
+                             %   WITHOUT the leading 'geometries_' prefix.
+                             %   e.g. if files are named
+                             %     leadfield_geometries_sub001_source_original_bslaw_back.mat
+                             %   set base_geom_name = 'sub001'
+                             %   For the default dataset: base_geom_name = 'original'
 
 
 % =========================================================================
