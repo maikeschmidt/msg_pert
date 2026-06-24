@@ -90,10 +90,10 @@ pt_add_functions;
 % Set have_<method> = true for each method you ran in msg_fwd.
 % All four can be true simultaneously.
 
-have_bem    = true;    % BEM via Helsinki BEM Framework
+have_bem    = false;    % BEM via Helsinki BEM Framework
 have_fem    = false;   % FEM via DUNEuro
-have_bslaw  = false;   % Biot-Savart (infinite homogeneous space)
-have_sphere = false;   % Single sphere (Sarvas analytical solution)
+have_bslaw  = true;   % Biot-Savart (infinite homogeneous space)
+have_sphere = true;   % Single sphere (Sarvas analytical solution)
 
 % Output paths for each method.
 % BEM and FEM: files are in per-geometry subfolders under the base path.
@@ -102,8 +102,8 @@ have_sphere = false;   % Single sphere (Sarvas analytical solution)
 
 bem_path    = forward_fields_base;   % override if BEM output is elsewhere
 fem_path    = forward_fields_base;   % override if FEM output is elsewhere
-bslaw_path  = forward_fields_base;   % override if BS  output is elsewhere
-sphere_path = forward_fields_base;   % override if sphere output is elsewhere
+bslaw_path  = 'D:\Simulations\Pertubations\fields\bs_law';   % override if BS  output is elsewhere
+sphere_path = 'D:\Simulations\Pertubations\fields\single_sphere';   % override if sphere output is elsewhere
 
 
 % =========================================================================
@@ -208,15 +208,15 @@ for g = 1:numel(all_geom_names)
     % ------------------------------------------------------------------
     if have_bslaw
         bs_files = dir(fullfile(bslaw_path, ...
-            ['leadfield_' geom_short '_bslaw_*.mat']));
+            ['leadfield_geometries_' geom_full '_bslaw_*.mat']));
 
         for bf = 1:numel(bs_files)
             fname = bs_files(bf).name;
             tok   = regexp(fname, ...
-                ['leadfield_' geom_short '_bslaw_(.+)\.mat'], 'tokens');
+                ['leadfield_geometries_' geom_full '_bslaw_(.+)\.mat'], 'tokens');
             if isempty(tok); continue; end
             arr      = tok{1}{1};
-            key      = ['bslaw_' geom_short '_' arr];
+            key      = ['bslaw_' geom_full '_' arr];
 
             tmp = load(fullfile(bslaw_path, fname), 'leadfield_bs');
             if ~isfield(tmp, 'leadfield_bs')
@@ -237,15 +237,15 @@ for g = 1:numel(all_geom_names)
     % ------------------------------------------------------------------
     if have_sphere
         sp_files = dir(fullfile(sphere_path, ...
-            ['leadfield_' geom_short '_sphere_*.mat']));
+            ['leadfield_geometries_' geom_full '_sphere_*.mat']));
 
         for sf = 1:numel(sp_files)
             fname = sp_files(sf).name;
             tok   = regexp(fname, ...
-                ['leadfield_' geom_short '_sphere_(.+)\.mat'], 'tokens');
+                ['leadfield_geometries_' geom_full '_sphere_(.+)\.mat'], 'tokens');
             if isempty(tok); continue; end
             arr      = tok{1}{1};
-            key      = ['sphere_' geom_short '_' arr];
+            key      = ['sphere_' geom_full '_' arr];
 
             tmp = load(fullfile(sphere_path, fname), 'leadfield_sphere');
             if ~isfield(tmp, 'leadfield_sphere')
