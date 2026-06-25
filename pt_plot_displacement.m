@@ -106,31 +106,38 @@ src_cmap = parula(n_sources_sel);
 method_label_map = containers.Map(fwd_methods, fwd_method_labels);
 n_loaded_methods = numel(loaded_methods);
 
-for m_idx = 1:n_loaded_methods
-    method    = loaded_methods{m_idx};
-    rsq_store = rsq_by_method.(method);
-    mlabel    = method_label_map(method);
-    fprintf('\n[%s]\n', mlabel);
+%% Individual source figures
+% Layout: (n_methods × n_axes) rows × n_ori cols, all methods in one figure.
+% Rows are grouped by method; bundle colours identify displacement magnitude.
 
-    %% Individual source figures
+fprintf('Generating individual source figures...\n');
 
-    fprintf('  Generating individual source figures...\n');
+for src_sel = 1:n_sources_sel
+    src_plot_idx = source_sel_idx(src_sel);
+    src_mm       = source_sel_mm(src_sel);
 
-    for src_sel = 1:n_sources_sel
-        src_plot_idx = source_sel_idx(src_sel);
-        src_mm       = source_sel_mm(src_sel);
+    n_rows = n_loaded_methods * n_axes;
+    fig_h  = max(900, n_rows * 220 + 150);
+    fig = figure('Color', 'w', 'Position', [100, 100, 1400, fig_h]);
+    tl  = tiledlayout(n_rows, n_ori, 'TileSpacing', 'compact', 'Padding', 'loose');
+    title(tl, sprintf('Sensor Shift — Source at %d mm along spinal cord', src_mm), ...
+        'FontSize', 14, 'FontWeight', 'bold');
+    xlabel(tl, x_label_disp, 'FontSize', 12);
 
-        fig = figure('Color', 'w', 'Position', [100, 100, 1400, 1050]);
-        tl  = tiledlayout(n_axes, numel(orientation_labels), ...
-            'TileSpacing', 'compact', 'Padding', 'loose');
-        title(tl, sprintf('[%s]  Sensor Shift — Source at %d mm along spinal cord', ...
-            mlabel, src_mm), 'FontSize', 14, 'FontWeight', 'bold');
-        leg_h_bundles = gobjects(n_sensor_bundles, 1);
+    leg_h_bundles = gobjects(n_sensor_bundles, 1);
+
+    for m_idx = 1:n_loaded_methods
+        method    = loaded_methods{m_idx};
+        rsq_store = rsq_by_method.(method);
+        mlabel    = method_label_map(method);
+        row_base  = (m_idx - 1) * n_axes;
 
         for sens_ax = 1:n_axes
-            for ori_idx = 1:numel(orientation_labels)
+            tile_row = row_base + sens_ax;
+
+            for ori_idx = 1:n_ori
                 ori_label = orientation_labels{ori_idx};
-                ax_panel  = nexttile(tl);
+                ax_panel  = nexttile(tl, (tile_row - 1) * n_ori + ori_idx);
                 hold(ax_panel, 'on');
 
                 if use_actual_disp
@@ -143,9 +150,9 @@ for m_idx = 1:n_loaded_methods
 
                 for b = 1:n_sensor_bundles
                     bund_rows = find(valid_bundle_idx == b);
-                    col = sensor_bundle_colors(b,:);
-                    x_vals = median_displacements(bund_rows);
-                    y_vals = squeeze(rsq_store.(ori_label)(bund_rows, src_plot_idx, sens_ax))';
+                    col       = sensor_bundle_colors(b,:);
+                    x_vals    = median_displacements(bund_rows);
+                    y_vals    = squeeze(rsq_store.(ori_label)(bund_rows, src_plot_idx, sens_ax))'; %#ok<IDISVAR>
                     leg_h_bundles(b) = scatter(ax_panel, x_vals, y_vals, 60, ...
                         'MarkerFaceColor', col, 'MarkerEdgeColor', 'w', ...
                         'LineWidth', 0.8, 'DisplayName', sensor_bundle_display{b});
@@ -155,42 +162,65 @@ for m_idx = 1:n_loaded_methods
                 yline(ax_panel, 0.99, ':', 'LineWidth', 1.0, 'Alpha', 0.4, 'Color', [0.4 0.4 0.4]);
                 yline(ax_panel, 0.95, ':', 'LineWidth', 1.0, 'Alpha', 0.4, 'Color', [0.6 0.6 0.6]);
 
-                if sens_ax == 1; title(ax_panel, orientation_display{ori_idx}, 'FontSize', 12, 'FontWeight', 'bold'); end
-                if ori_idx == 1; ylabel(ax_panel, sprintf('Sensor axis %d\nr²', sens_ax), 'FontSize', 11); end
-                if sens_ax == n_axes; xlabel(ax_panel, x_label_disp, 'FontSize', 11); end
+                % Column titles on first method's first sensor axis row
+                if m_idx == 1 && sens_ax == 1
+                    title(ax_panel, orientation_display{ori_idx}, 'FontSize', 12, 'FontWeight', 'bold');
+                end
+                % Row labels: method + sensor axis on left column
+                if ori_idx == 1
+                    ylabel(ax_panel, sprintf('[%s]\nAxis %d  r²', mlabel, sens_ax), 'FontSize', 10);
+                end
 
                 xlim(ax_panel, [0, x_max]); ylim(ax_panel, [0, 1.05]);
                 grid(ax_panel, 'on');
-                set(ax_panel, 'FontSize', 11, 'LineWidth', 1.2, 'TickDir', 'out');
+                set(ax_panel, 'FontSize', 10, 'LineWidth', 1.2, 'TickDir', 'out');
                 hold(ax_panel, 'off');
             end
         end
 
-        lgd = legend(leg_h_bundles, sensor_bundle_display, 'Orientation', 'horizontal', ...
-            'FontSize', 11, 'Box', 'off');
-        lgd.Layout.Tile = 'south';
-
-        fname = sprintf('sensor_disp_vs_rsq_%s_source%dmm', method, src_mm);
-        exportgraphics(fig, fullfile(save_dir, [fname '.png']), 'Resolution', 600);
-        saveas(fig, fullfile(save_dir, [fname '.fig']));
-        close(fig);
-        fprintf('    Saved: %s\n', fname);
+        % Separator line between method blocks (drawn on first col of last axis row)
+        if m_idx < n_loaded_methods
+            tile_idx = (row_base + n_axes - 1) * n_ori + 1;
+            hax_sep  = nexttile(tl, tile_idx);   % just reference the existing axes
+            set(hax_sep, 'XColor', [0 0 0], 'LineWidth', 2.0);
+        end
     end
 
-    %% Combined figures (one per sensor axis)
+    lgd = legend(leg_h_bundles, sensor_bundle_display, 'Orientation', 'horizontal', ...
+        'FontSize', 11, 'Box', 'off');
+    lgd.Layout.Tile = 'south';
 
-    fprintf('  Generating combined figures...\n');
+    fname = sprintf('sensor_disp_vs_rsq_source%dmm', src_mm);
+    exportgraphics(fig, fullfile(save_dir, [fname '.png']), 'Resolution', 600);
+    saveas(fig, fullfile(save_dir, [fname '.fig']));
+    close(fig);
+    fprintf('  Saved: %s\n', fname);
+end
 
-    for sens_ax = 1:n_axes
-        fig = figure('Color', 'w', 'Position', [100, 100, 1800, 650]);
-        tl  = tiledlayout(1, numel(orientation_labels), 'TileSpacing', 'compact', 'Padding', 'loose');
-        title(tl, sprintf('[%s]  Sensor Shift — Sensor axis %d of %d  |  Sources %d–%d mm', ...
-            mlabel, sens_ax, n_axes, target_min_mm, target_max_mm), ...
-            'FontSize', 13, 'FontWeight', 'bold');
 
-        for ori_idx = 1:numel(orientation_labels)
+%% Combined figures (one per sensor axis)
+% Layout: n_methods rows × n_ori cols.
+% Within each tile: displacement vs r², coloured by source position.
+
+fprintf('\nGenerating combined figures...\n');
+
+for sens_ax = 1:n_axes
+    fig_h = max(500, n_loaded_methods * 320 + 150);
+    fig = figure('Color', 'w', 'Position', [100, 100, 1800, fig_h]);
+    tl  = tiledlayout(n_loaded_methods, n_ori, 'TileSpacing', 'compact', 'Padding', 'loose');
+    title(tl, sprintf('Sensor Shift — Sensor axis %d of %d  |  Sources %d–%d mm', ...
+        sens_ax, n_axes, target_min_mm, target_max_mm), ...
+        'FontSize', 13, 'FontWeight', 'bold');
+    xlabel(tl, x_label_disp, 'FontSize', 12);
+
+    for m_idx = 1:n_loaded_methods
+        method    = loaded_methods{m_idx};
+        rsq_store = rsq_by_method.(method);
+        mlabel    = method_label_map(method);
+
+        for ori_idx = 1:n_ori
             ori_label = orientation_labels{ori_idx};
-            ax_panel  = nexttile(tl);
+            ax_panel  = nexttile(tl, (m_idx - 1) * n_ori + ori_idx);
             hold(ax_panel, 'on');
 
             if use_actual_disp
@@ -198,9 +228,11 @@ for m_idx = 1:n_loaded_methods
                     xr = bundle_x_ranges(b,:);
                     patch(ax_panel, [xr(1) xr(2) xr(2) xr(1)], [0 0 1.05 1.05], ...
                         bundle_shade_colors(b,:), 'EdgeColor', 'none', 'FaceAlpha', 0.5);
-                    text(ax_panel, mean(xr), 1.03, sensor_bundle_display{b}, ...
-                        'HorizontalAlignment', 'center', 'FontSize', 9, ...
-                        'Color', sensor_bundle_colors(b,:), 'FontWeight', 'bold');
+                    if m_idx == 1
+                        text(ax_panel, mean(xr), 1.03, sensor_bundle_display{b}, ...
+                            'HorizontalAlignment', 'center', 'FontSize', 9, ...
+                            'Color', sensor_bundle_colors(b,:), 'FontWeight', 'bold');
+                    end
                 end
             end
 
@@ -242,32 +274,33 @@ for m_idx = 1:n_loaded_methods
                 'Color', [0.6 0.6 0.6], 'Label', 'r²=0.95', ...
                 'LabelHorizontalAlignment', 'left', 'FontSize', 9);
 
-            title(ax_panel, orientation_display{ori_idx}, 'FontSize', 13, 'FontWeight', 'bold');
-            xlabel(ax_panel, x_label_disp, 'FontSize', 13);
+            if m_idx == 1
+                title(ax_panel, orientation_display{ori_idx}, 'FontSize', 13, 'FontWeight', 'bold');
+            end
             if ori_idx == 1
-                ylabel(ax_panel, {'r²  vs original leadfield'; '(1.0 = no effect)'}, 'FontSize', 12);
+                ylabel(ax_panel, {mlabel; 'r²'}, 'FontSize', 12);
             end
 
             xlim(ax_panel, [0, x_max]); ylim(ax_panel, [0, 1.05]);
             grid(ax_panel, 'on');
             set(ax_panel, 'FontSize', 12, 'LineWidth', 1.2, 'TickDir', 'out');
 
-            lgd = legend(ax_panel, leg_h, ...
-                arrayfun(@(mm) sprintf('%d mm along cord', mm), source_sel_mm, 'UniformOutput', false), ...
-                'Location', 'eastoutside', 'FontSize', 11);
-            lgd.Box = 'off';
-            title(lgd, 'Source position');
+            if ori_idx == n_ori
+                lgd = legend(ax_panel, leg_h, ...
+                    arrayfun(@(mm) sprintf('%d mm along cord', mm), source_sel_mm, ...
+                    'UniformOutput', false), 'Location', 'eastoutside', 'FontSize', 11);
+                lgd.Box = 'off';
+                title(lgd, 'Source position');
+            end
             hold(ax_panel, 'off');
         end
-
-        fname = sprintf('sensor_disp_vs_rsq_%s_combined_sensorax%d', method, sens_ax);
-        exportgraphics(fig, fullfile(save_dir, [fname '.png']), 'Resolution', 600);
-        saveas(fig, fullfile(save_dir, [fname '.fig']));
-        close(fig);
-        fprintf('    Saved: %s\n', fname);
     end
 
-    fprintf('  [%s] Done\n', mlabel);
+    fname = sprintf('sensor_disp_vs_rsq_combined_sensorax%d', sens_ax);
+    exportgraphics(fig, fullfile(save_dir, [fname '.png']), 'Resolution', 600);
+    saveas(fig, fullfile(save_dir, [fname '.fig']));
+    close(fig);
+    fprintf('  Saved: %s\n', fname);
 end
 
 fprintf('\npt_plot_displacement complete.\n');
