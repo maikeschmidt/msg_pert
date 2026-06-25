@@ -76,8 +76,12 @@ if run_source
     method_label_map = containers.Map(fwd_methods, fwd_method_labels);
     method_style_map = containers.Map(fwd_methods, fwd_method_styles(1:numel(fwd_methods))); %#ok<NASGU>
 
-    % Magnitudes: ±2mm (lightest), ±4mm (mid), ±6mm (darkest)
-    mag_alpha        = [0.45, 0.70, 1.00];
+    % Magnitude colours: 2mm=blue, 4mm=yellow, 6mm=green (sign encoded by line style)
+    mag_colors = [
+        0.00, 0.45, 0.70;   % 2mm — blue
+        0.93, 0.72, 0.00;   % 4mm — yellow
+        0.00, 0.62, 0.45;   % 6mm — green
+    ];
     shift_axis_long  = {'X axis', 'Y axis', 'Z axis'};
 
     for m_idx = 1:n_loaded_methods
@@ -106,14 +110,18 @@ if run_source
                     leg_handles = gobjects(0);
                     leg_labels  = {};
 
+                    % Pre-compute data range for this tile
+                    tile_rsq = zeros(numel(ax_row_idx), numel(distances));
+                    for i = 1:numel(ax_row_idx)
+                        tile_rsq(i,:) = squeeze(rsq_store.(ori_label)(ax_row_idx(i), :, sens_ax));
+                    end
+
                     for i = 1:numel(ax_row_idx)
                         rsq_row = ax_row_idx(i);
                         mag_i   = mod(i-1, 3) + 1;
-                        col     = axis_base_color * mag_alpha(mag_i) + ...
-                                  (1 - mag_alpha(mag_i)) * [1 1 1];
+                        col     = mag_colors(mag_i, :);
                         lstyle  = valid_styles{rsq_row};
-                        h = plot(ax, distances, ...
-                            squeeze(rsq_store.(ori_label)(rsq_row, :, sens_ax)), ...
+                        h = plot(ax, distances, tile_rsq(i,:), ...
                             'LineStyle', lstyle, 'Color', col, ...
                             'LineWidth', pub_line_width, ...
                             'Marker', valid_markers{rsq_row}, ...
@@ -126,19 +134,21 @@ if run_source
 
                     add_ref_lines(ax);
                     xlim(ax, [distances(1), distances(end)]);
-                    ylim(ax, [0, 1.05]);
+                    y_lo = max(0,   floor(min(tile_rsq(:)) * 100) / 100 - 0.01);
+                    y_hi = min(1.05, ceil(max(tile_rsq(:)) * 100) / 100 + 0.01);
+                    ylim(ax, [y_lo, y_hi]);
                     xticks(ax, 0:20:ceil(distances(end)));
                     grid(ax, 'on');
                     set(ax, 'FontSize', 11, 'LineWidth', 1.0, 'TickDir', 'out');
 
                     if ori_idx == 1
-                        ylabel(ax, [shift_axis_long{shift_ax} '  r²'], 'FontSize', 11, ...
-                            'Color', axis_base_color);
+                        ylabel(ax, ['Shift along ' shift_axis_long{shift_ax} '  r²'], ...
+                            'FontSize', 11, 'Color', axis_base_color);
                     end
                     if shift_ax == 1
                         title(ax, orientation_display{ori_idx}, 'FontSize', 12);
                     end
-                    if shift_ax == 3 && ori_idx == n_ori
+                    if ori_idx == n_ori
                         lgd = legend(ax, leg_handles, leg_labels, ...
                             'Location', 'eastoutside', 'FontSize', 9);
                         lgd.Box = 'off';
