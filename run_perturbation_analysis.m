@@ -15,12 +15,13 @@
 %     2. pt_generate_sensor_shifts   generate 24 sensor-shift geometry files
 %     3. [Copy printed filenames into msg_fwd and run forward models]
 %
-%   Phase 2 — Analysis (this script, 5 steps):
+%   Phase 2 — Analysis (this script, 6 steps):
 %     1. pt_load_leadfields    load + organise BEM/FEM/BS/sphere leadfields
 %     2. pt_compute_rsq        compute r² for source and sensor shifts
 %     3. pt_plot_curves        r² vs cord distance figures
-%     4. pt_plot_displacement  displacement vs r² figures (sensor mode only)
-%     5. pt_compute_table      summary tables (.txt and .csv)
+%     4. pt_plot_heatmaps      heatmap summaries (within- and between-model)
+%     5. pt_plot_displacement  displacement vs r² figures (sensor mode only)
+%     6. pt_compute_table      summary tables (.txt and .csv)
 %
 % USAGE:
 %   run_perturbation_analysis
@@ -92,46 +93,61 @@ have_sensor_rsq = isfile(sensor_rsq_file);
 % STEP 3: Sensitivity curve figures
 
 if have_source_rsq || have_sensor_rsq
-    fprintf('[3/5] Plotting perturbation curves...\n');
+    fprintf('[3/6] Plotting perturbation curves...\n');
     try
         run('pt_plot_curves.m');
-        fprintf('[3/5] Complete.\n\n');
+        fprintf('[3/6] Complete.\n\n');
     catch err
         fprintf('WARNING: pt_plot_curves failed:\n  %s\n', err.message);
         fprintf('Continuing...\n\n');
     end
 else
-    fprintf('[3/5] Skipping pt_plot_curves — no r² files found.\n\n');
+    fprintf('[3/6] Skipping pt_plot_curves — no r² files found.\n\n');
 end
 
-% STEP 4: Displacement vs r² (sensor mode only)
+% STEP 4: Heatmap summaries
+
+if have_source_rsq || have_sensor_rsq
+    fprintf('[4/6] Plotting heatmaps...\n');
+    try
+        run('pt_plot_heatmaps.m');
+        fprintf('[4/6] Complete.\n\n');
+    catch err
+        fprintf('WARNING: pt_plot_heatmaps failed:\n  %s\n', err.message);
+        fprintf('Continuing...\n\n');
+    end
+else
+    fprintf('[4/6] Skipping pt_plot_heatmaps — no r² files found.\n\n');
+end
+
+% STEP 5: Displacement vs r² (sensor mode only)
 
 if have_sensor_rsq
-    fprintf('[4/5] Plotting displacement vs r²...\n');
+    fprintf('[5/6] Plotting displacement vs r²...\n');
     try
         run('pt_plot_displacement.m');
-        fprintf('[4/5] Complete.\n\n');
+        fprintf('[5/6] Complete.\n\n');
     catch err
         fprintf('WARNING: pt_plot_displacement failed:\n  %s\n', err.message);
         fprintf('Continuing...\n\n');
     end
 else
-    fprintf('[4/5] Skipping pt_plot_displacement — no sensor r² file found.\n\n');
+    fprintf('[5/6] Skipping pt_plot_displacement — no sensor r² file found.\n\n');
 end
 
-% STEP 5: Summary tables
+% STEP 6: Summary tables
 
 if have_source_rsq || have_sensor_rsq
-    fprintf('[5/5] Computing summary tables...\n');
+    fprintf('[6/6] Computing summary tables...\n');
     try
         run('pt_compute_table.m');
-        fprintf('[5/5] Complete.\n\n');
+        fprintf('[6/6] Complete.\n\n');
     catch err
         fprintf('WARNING: pt_compute_table failed:\n  %s\n', err.message);
         fprintf('Continuing...\n\n');
     end
 else
-    fprintf('[5/5] Skipping pt_compute_table — no r² files found.\n\n');
+    fprintf('[6/6] Skipping pt_compute_table — no r² files found.\n\n');
 end
 
 fprintf('  Perturbation analysis pipeline complete.\n');
