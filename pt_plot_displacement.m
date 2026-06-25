@@ -107,87 +107,88 @@ method_label_map = containers.Map(fwd_methods, fwd_method_labels);
 n_loaded_methods = numel(loaded_methods);
 
 %% Individual source figures
-% Layout: (n_methods × n_axes) rows × n_ori cols, all methods in one figure.
-% Rows are grouped by method; bundle colours identify displacement magnitude.
+% Layout: n_axes rows × n_ori cols — same as before.
+% All methods overlaid per panel: colour = method, marker = bundle.
 
 fprintf('Generating individual source figures...\n');
+
+bundle_markers_disp = {'o', 's', '^'};   % marker per bundle (up to 3; extend if needed)
 
 for src_sel = 1:n_sources_sel
     src_plot_idx = source_sel_idx(src_sel);
     src_mm       = source_sel_mm(src_sel);
 
-    n_rows = n_loaded_methods * n_axes;
-    fig_h  = max(900, n_rows * 220 + 150);
-    fig = figure('Color', 'w', 'Position', [100, 100, 1400, fig_h]);
-    tl  = tiledlayout(n_rows, n_ori, 'TileSpacing', 'compact', 'Padding', 'loose');
+    fig = figure('Color', 'w', 'Position', [100, 100, 1400, 1050]);
+    tl  = tiledlayout(n_axes, n_ori, 'TileSpacing', 'compact', 'Padding', 'loose');
     title(tl, sprintf('Sensor Shift — Source at %d mm along spinal cord', src_mm), ...
         'FontSize', 14, 'FontWeight', 'bold');
     xlabel(tl, x_label_disp, 'FontSize', 12);
 
-    leg_h_bundles = gobjects(n_sensor_bundles, 1);
+    % Pre-build legend handles (methods × bundles) from first tile
+    leg_h   = gobjects(n_loaded_methods * n_sensor_bundles, 1);
+    leg_lbl = cell(n_loaded_methods * n_sensor_bundles, 1);
 
-    for m_idx = 1:n_loaded_methods
-        method    = loaded_methods{m_idx};
-        rsq_store = rsq_by_method.(method);
-        mlabel    = method_label_map(method);
-        row_base  = (m_idx - 1) * n_axes;
+    for sens_ax = 1:n_axes
+        for ori_idx = 1:n_ori
+            ori_label = orientation_labels{ori_idx};
+            ax_panel  = nexttile(tl, (sens_ax - 1) * n_ori + ori_idx);
+            hold(ax_panel, 'on');
 
-        for sens_ax = 1:n_axes
-            tile_row = row_base + sens_ax;
-
-            for ori_idx = 1:n_ori
-                ori_label = orientation_labels{ori_idx};
-                ax_panel  = nexttile(tl, (tile_row - 1) * n_ori + ori_idx);
-                hold(ax_panel, 'on');
-
-                if use_actual_disp
-                    for b = 1:n_sensor_bundles
-                        xr = bundle_x_ranges(b,:);
-                        patch(ax_panel, [xr(1) xr(2) xr(2) xr(1)], [0 0 1.05 1.05], ...
-                            bundle_shade_colors(b,:), 'EdgeColor', 'none', 'FaceAlpha', 0.5);
-                    end
+            if use_actual_disp
+                for b = 1:n_sensor_bundles
+                    xr = bundle_x_ranges(b,:);
+                    patch(ax_panel, [xr(1) xr(2) xr(2) xr(1)], [0 0 1.05 1.05], ...
+                        bundle_shade_colors(b,:), 'EdgeColor', 'none', 'FaceAlpha', 0.5);
                 end
+            end
+
+            for m_idx = 1:n_loaded_methods
+                method    = loaded_methods{m_idx};
+                rsq_store = rsq_by_method.(method);
+                mlabel    = method_label_map(method);
+                mcol      = fwd_method_colors(m_idx, :);
 
                 for b = 1:n_sensor_bundles
                     bund_rows = find(valid_bundle_idx == b);
-                    col       = sensor_bundle_colors(b,:);
+                    bmarker   = bundle_markers_disp{min(b, numel(bundle_markers_disp))};
                     x_vals    = median_displacements(bund_rows);
-                    y_vals    = squeeze(rsq_store.(ori_label)(bund_rows, src_plot_idx, sens_ax))'; %#ok<IDISVAR>
-                    leg_h_bundles(b) = scatter(ax_panel, x_vals, y_vals, 60, ...
-                        'MarkerFaceColor', col, 'MarkerEdgeColor', 'w', ...
-                        'LineWidth', 0.8, 'DisplayName', sensor_bundle_display{b});
-                end
+                    y_vals    = squeeze(rsq_store.(ori_label)(bund_rows, src_plot_idx, sens_ax))';
+                    h = scatter(ax_panel, x_vals, y_vals, 60, ...
+                        'Marker', bmarker, ...
+                        'MarkerFaceColor', mcol, 'MarkerEdgeColor', 'w', ...
+                        'LineWidth', 0.8);
 
-                yline(ax_panel, 1.00, '--k', 'LineWidth', 1.0, 'Alpha', 0.4);
-                yline(ax_panel, 0.99, ':', 'LineWidth', 1.0, 'Alpha', 0.4, 'Color', [0.4 0.4 0.4]);
-                yline(ax_panel, 0.95, ':', 'LineWidth', 1.0, 'Alpha', 0.4, 'Color', [0.6 0.6 0.6]);
-
-                % Column titles on first method's first sensor axis row
-                if m_idx == 1 && sens_ax == 1
-                    title(ax_panel, orientation_display{ori_idx}, 'FontSize', 12, 'FontWeight', 'bold');
+                    % Collect handles for legend from the first tile only
+                    if sens_ax == 1 && ori_idx == 1
+                        li = (m_idx - 1) * n_sensor_bundles + b;
+                        leg_h(li)   = h;
+                        leg_lbl{li} = sprintf('%s — %s', mlabel, sensor_bundle_display{b});
+                    end
                 end
-                % Row labels: method + sensor axis on left column
-                if ori_idx == 1
-                    ylabel(ax_panel, sprintf('[%s]\nAxis %d  r²', mlabel, sens_ax), 'FontSize', 10);
-                end
-
-                xlim(ax_panel, [0, x_max]); ylim(ax_panel, [0, 1.05]);
-                grid(ax_panel, 'on');
-                set(ax_panel, 'FontSize', 10, 'LineWidth', 1.2, 'TickDir', 'out');
-                hold(ax_panel, 'off');
             end
-        end
 
-        % Separator line between method blocks (drawn on first col of last axis row)
-        if m_idx < n_loaded_methods
-            tile_idx = (row_base + n_axes - 1) * n_ori + 1;
-            hax_sep  = nexttile(tl, tile_idx);   % just reference the existing axes
-            set(hax_sep, 'XColor', [0 0 0], 'LineWidth', 2.0);
+            yline(ax_panel, 1.00, '--k', 'LineWidth', 1.0, 'Alpha', 0.4);
+            yline(ax_panel, 0.99, ':', 'LineWidth', 1.0, 'Alpha', 0.4, 'Color', [0.4 0.4 0.4]);
+            yline(ax_panel, 0.95, ':', 'LineWidth', 1.0, 'Alpha', 0.4, 'Color', [0.6 0.6 0.6]);
+
+            if sens_ax == 1
+                title(ax_panel, orientation_display{ori_idx}, 'FontSize', 12, 'FontWeight', 'bold');
+            end
+            if ori_idx == 1
+                ylabel(ax_panel, sprintf('Sensor axis %d\nr²', sens_ax), 'FontSize', 11);
+            end
+            if sens_ax == n_axes
+                xlabel(ax_panel, x_label_disp, 'FontSize', 11);
+            end
+
+            xlim(ax_panel, [0, x_max]); ylim(ax_panel, [0, 1.05]);
+            grid(ax_panel, 'on');
+            set(ax_panel, 'FontSize', 11, 'LineWidth', 1.2, 'TickDir', 'out');
+            hold(ax_panel, 'off');
         end
     end
 
-    lgd = legend(leg_h_bundles, sensor_bundle_display, 'Orientation', 'horizontal', ...
-        'FontSize', 11, 'Box', 'off');
+    lgd = legend(leg_h, leg_lbl, 'Orientation', 'horizontal', 'FontSize', 10, 'Box', 'off');
     lgd.Layout.Tile = 'south';
 
     fname = sprintf('sensor_disp_vs_rsq_source%dmm', src_mm);
