@@ -54,12 +54,20 @@
 %   Source spacing:
 %     src_spacing_mm       - Source spacing along cord in mm (default: 5)
 %
+%   Forward model methods:
+%     fwd_methods          - cell array of method names to compare
+%     fwd_method_labels    - display labels (same order as fwd_methods)
+%     fwd_method_colors    - [N x 3] RGB colours per method
+%     fwd_method_styles    - line styles per method
+%
 %   Plot styling:
 %     pub_line_width       - Line width for publication figures (default: 2.0)
 %     pub_marker_size      - Marker size for publication figures (default: 7)
 %
 % NOTES:
 %   - Set the four path variables and base_geom_name before running any script
+%   - base_geom_name must NOT include the 'geometries_' prefix — that prefix
+%     is attached automatically in file search patterns
 %   - Paste sensor_shift_vectors from the output of pt_generate_sensor_shifts
 %     so that displacement vs r² plots can use actual mm values on the x-axis
 %
@@ -80,8 +88,8 @@
 
 geoms_path           = 'D:\Simulations\Pertubations\geometries';   % SET THIS: path to original geometry .mat file
 perturbed_geoms_path = 'D:\Simulations\Pertubations\geometries';   % SET THIS: output path for perturbed geometry files
-forward_fields_base  = 'D:\Simulations\Pertubations\fields';   % SET THIS: path to leadfield .mat files (from msg_fwd)
-save_base_dir        = 'D:\Simulations\Pertubations\results';   % SET THIS: base path for figures and tables
+forward_fields_base  = 'D:\Simulations\Pertubations\fields';       % SET THIS: path to leadfield .mat files (from msg_fwd)
+save_base_dir        = 'D:\Simulations\Pertubations\results';      % SET THIS: base path for figures and tables
 
 base_geom_name       = 'original';   % SET THIS: short stem used in file names,
                              %   WITHOUT the leading 'geometries_' prefix.
@@ -178,6 +186,30 @@ sensor_bundle_colors = [
     0.05, 0.36, 0.65;   % Bundle 2 — mid blue
     0.00, 0.18, 0.40;   % Bundle 3 — dark blue
 ];
+
+
+% =========================================================================
+% FORWARD MODEL METHODS FOR COMPARISON
+% =========================================================================
+% List the methods you ran in msg_fwd and want to compare.
+% Labels and colours must be in the same order as fwd_methods.
+% Method names must match the prefixes used in pt_load_leadfields:
+%   'bslaw'  — Biot-Savart law (infinite homogeneous medium)
+%   'sphere' — Single sphere (Sarvas analytical)
+%   'bem'    — Boundary Element Method
+%   'fem'    — Finite Element Method
+
+fwd_methods       = {'bslaw', 'sphere', 'bem'};   % SET THIS: methods to compare
+fwd_method_labels = {'Biot-Savart', 'Single sphere', 'BEM'};   % SET THIS
+
+fwd_method_colors = [
+    0.80, 0.15, 0.10;   % bslaw  — red
+    0.10, 0.30, 0.80;   % sphere — blue
+    0.10, 0.60, 0.20;   % bem    — green  
+    0.55, 0.10, 0.75;   % fem    — purple 
+];
+
+fwd_method_styles = {'-', '--', ':', '-.'};   % line style per method
 
 
 % =========================================================================
