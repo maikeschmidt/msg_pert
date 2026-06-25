@@ -227,13 +227,18 @@ if run_sensor
                     hold(ax, 'on');
                     leg_handles = gobjects(n_in_bundle, 1);
 
+                    % Pre-collect tile data for y-axis scaling
+                    tile_rsq = zeros(n_in_bundle, numel(distances));
+                    for i = 1:n_in_bundle
+                        tile_rsq(i,:) = squeeze(rsq_store.(ori_label)(bund_rows(i), :, sens_ax));
+                    end
+
                     for i = 1:n_in_bundle
                         rsq_row = bund_rows(i);
                         t       = (i-1) / max(n_in_bundle-1, 1);
                         col     = bcolor * (0.5 + 0.5*(1-t)) + (1 - (0.5 + 0.5*(1-t))) * [1 1 1];
                         col     = min(1, max(0, col));
-                        leg_handles(i) = plot(ax, distances, ...
-                            squeeze(rsq_store.(ori_label)(rsq_row, :, sens_ax)), ...
+                        leg_handles(i) = plot(ax, distances, tile_rsq(i,:), ...
                             '-', 'Color', col, 'LineWidth', pub_line_width - 0.5, ...
                             'Marker', 'o', 'MarkerIndices', marker_idx, ...
                             'MarkerSize', pub_marker_size - 1, ...
@@ -242,7 +247,9 @@ if run_sensor
 
                     add_ref_lines(ax);
                     xlim(ax, [distances(1), distances(end)]);
-                    ylim(ax, [0, 1.05]);
+                    y_lo = max(0,   floor(min(tile_rsq(:)) * 100) / 100 - 0.01);
+                    y_hi = min(1.05, ceil(max(tile_rsq(:)) * 100) / 100 + 0.01);
+                    ylim(ax, [y_lo, y_hi]);
                     xticks(ax, 0:20:ceil(distances(end)));
                     grid(ax, 'on');
                     set(ax, 'FontSize', 11, 'LineWidth', 1.0, 'TickDir', 'out');
@@ -254,7 +261,7 @@ if run_sensor
                     if b == 1
                         title(ax, orientation_display{ori_idx}, 'FontSize', 12);
                     end
-                    if b == n_sensor_bundles && ori_idx == n_ori
+                    if ori_idx == n_ori
                         shift_labels = valid_labels(bundle_mask);
                         lgd = legend(ax, leg_handles, shift_labels(1:n_in_bundle), ...
                             'Location', 'eastoutside', 'FontSize', 9);
@@ -297,6 +304,7 @@ if run_sensor
                 ax = nexttile(tl);
                 hold(ax, 'on');
                 leg_handles = gobjects(n_sensor_bundles, 1);
+                tile_rsq    = zeros(n_sensor_bundles, numel(distances));
 
                 for b = 1:n_sensor_bundles
                     bcolor      = sensor_bundle_colors(b, :);
@@ -309,6 +317,7 @@ if run_sensor
                     else
                         rsq_mean = rsq_all;
                     end
+                    tile_rsq(b,:) = rsq_mean;
 
                     leg_handles(b) = plot(ax, distances, rsq_mean, ...
                         '-', 'Color', bcolor, 'LineWidth', pub_line_width + 0.5, ...
@@ -319,7 +328,9 @@ if run_sensor
 
                 add_ref_lines(ax);
                 xlim(ax, [distances(1), distances(end)]);
-                ylim(ax, [0, 1.05]);
+                y_lo = max(0,   floor(min(tile_rsq(:)) * 100) / 100 - 0.01);
+                y_hi = min(1.05, ceil(max(tile_rsq(:)) * 100) / 100 + 0.01);
+                ylim(ax, [y_lo, y_hi]);
                 xticks(ax, 0:20:ceil(distances(end)));
                 grid(ax, 'on');
                 set(ax, 'FontSize', 11, 'LineWidth', 1.0, 'TickDir', 'out');
@@ -356,6 +367,8 @@ if run_sensor
             xlabel(tl, 'Distance along spinal cord (mm)', 'FontSize', 12);
             ylabel(tl, 'r²  (shifted vs original)', 'FontSize', 12);
 
+            % Colour = method, marker = bundle
+            bundle_markers  = {'o', 's', '^'};   % circle / square / triangle
             n_lines     = n_loaded_methods * n_sensor_bundles;
             leg_handles = gobjects(n_lines, 1);
             leg_labels  = cell(n_lines, 1);
@@ -365,18 +378,19 @@ if run_sensor
 
                 ax = nexttile(tl);
                 hold(ax, 'on');
-                line_n = 0;
+                line_n   = 0;
+                tile_rsq = zeros(n_lines, numel(distances));
 
                 for m_idx = 1:n_loaded_methods
                     method    = loaded_methods{m_idx};
                     rsq_store = rsq_by_method.(method);
                     mlabel    = method_label_map(method);
-                    mstyle    = method_style_map(method);
+                    mcolor    = fwd_method_colors(m_idx, :);
 
                     for b = 1:n_sensor_bundles
-                        bcolor      = sensor_bundle_colors(b, :);
                         bundle_mask = valid_bundle_idx == b;
                         bund_rows   = find(bundle_mask);
+                        bmarker     = bundle_markers{b};
 
                         rsq_all  = squeeze(rsq_store.(ori_label)(bund_rows, :, sens_ax));
                         if numel(bund_rows) > 1
@@ -386,12 +400,13 @@ if run_sensor
                         end
 
                         line_n = line_n + 1;
+                        tile_rsq(line_n,:) = rsq_mean;
                         h = plot(ax, distances, rsq_mean, ...
-                            'LineStyle', mstyle, 'Color', bcolor, ...
+                            'LineStyle', '-', 'Color', mcolor, ...
                             'LineWidth', pub_line_width, ...
-                            'Marker', 'o', 'MarkerIndices', marker_idx, ...
+                            'Marker', bmarker, 'MarkerIndices', marker_idx, ...
                             'MarkerSize', pub_marker_size - 1, ...
-                            'MarkerFaceColor', bcolor, 'MarkerEdgeColor', bcolor);
+                            'MarkerFaceColor', mcolor, 'MarkerEdgeColor', mcolor);
                         if ori_idx == 1
                             leg_handles(line_n) = h;
                             leg_labels{line_n}  = sprintf('%s — %s', ...
@@ -402,7 +417,9 @@ if run_sensor
 
                 add_ref_lines(ax);
                 xlim(ax, [distances(1), distances(end)]);
-                ylim(ax, [0, 1.05]);
+                y_lo = max(0,   floor(min(tile_rsq(:)) * 100) / 100 - 0.01);
+                y_hi = min(1.05, ceil(max(tile_rsq(:)) * 100) / 100 + 0.01);
+                ylim(ax, [y_lo, y_hi]);
                 xticks(ax, 0:20:ceil(distances(end)));
                 grid(ax, 'on');
                 set(ax, 'FontSize', 11, 'LineWidth', 1.0, 'TickDir', 'out');
