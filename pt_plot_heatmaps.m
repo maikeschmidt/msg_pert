@@ -184,59 +184,101 @@ if run_source
 
     % ----------------------------------------------------------------
     % SOURCE CROSS-METHOD (one figure per shift axis)
+    % + and - shifts averaged per magnitude → 3 items per axis per method
     % ----------------------------------------------------------------
     fprintf('  Source cross-method heatmaps...\n');
+
+    % Extract magnitude per shift row from label (e.g. 'X+2mm' -> 2)
+    mags_per_row = zeros(1, n_shifts);
+    for i = 1:n_shifts
+        tok = regexp(valid_labels{i}, '[+-](\d+)mm', 'tokens');
+        if ~isempty(tok)
+            mags_per_row(i) = str2double(tok{1}{1});
+        end
+    end
+    is_positive = strcmp(valid_styles, '-');   % '-' = solid = positive shift
+
     for sh_ax = 1:3
         ax_label = source_shift_axes{sh_ax};   % 'X', 'Y', or 'Z'
         ax_mask  = valid_shift_axis == sh_ax;
-        ax_rows  = find(ax_mask);              % 6 row indices into valid_keys_geom
 
         for sens_ax = 1:n_axes
-            item_keys   = {};
-            item_labels = {};
-            method_sep  = [];   % separator after these item indices
+            % Build list of (averaged) L matrices and labels for every method
+            L_all    = {};
+            lbl_all  = {};
+            ok_all   = [];
+            method_sep = [];
 
-            pos = 0;
             for m_idx = 1:n_loaded
                 method = loaded_methods{m_idx};
                 abbrev = get_abbrev(method, abbrev_map);
+                ref_key = [method '_' sensitivity_ref_key];
+                ref_ok  = isfield(leadfields, ref_key);
 
-                ref_key    = [method '_' sensitivity_ref_key];
-                shift_keys = cellfun(@(k) [method '_' k], ...
-                    valid_keys_geom(ax_rows), 'UniformOutput', false);
+                % Determine min sensors across ALL keys for this method/axis
+                all_axis_keys = {};
+                for mag = [2, 4, 6]
+                    pos_row = find(ax_mask & mags_per_row == mag &  is_positive);
+                    neg_row = find(ax_mask & mags_per_row == mag & ~is_positive);
+                    if ~isempty(pos_row)
+                        k = [method '_' valid_keys_geom{pos_row(1)}];
+                        if isfield(leadfields, k); all_axis_keys{end+1} = k; end %#ok<AGROW>
+                    end
+                    if ~isempty(neg_row)
+                        k = [method '_' valid_keys_geom{neg_row(1)}];
+                        if isfield(leadfields, k); all_axis_keys{end+1} = k; end %#ok<AGROW>
+                    end
+                end
+                if ref_ok; all_axis_keys{end+1} = ref_key; end
 
-                item_keys   = [item_keys,   ref_key,          shift_keys]; %#ok<AGROW>
-                item_labels = [item_labels, {[abbrev ':orig']}, ...
-                    cellfun(@(l) [abbrev ':' l], src_shift_short(ax_rows), ...
-                    'UniformOutput', false)];                              %#ok<AGROW>
+                if isempty(all_axis_keys); continue; end
+                min_s_ax = get_min_sensors_lf(leadfields, all_axis_keys, ...
+                    orientation_labels{1}, sens_ax);
 
-                pos = pos + 1 + numel(ax_rows);
+                % --- orig ---
+                L_all{end+1}   = ref_key;          %#ok<AGROW> % key for single model
+                lbl_all{end+1} = [abbrev ':orig']; %#ok<AGROW>
+                ok_all(end+1)  = ref_ok;           %#ok<AGROW>
+
+                % --- averaged magnitudes ---
+                for mag = [2, 4, 6]
+                    pos_row = find(ax_mask & mags_per_row == mag &  is_positive);
+                    neg_row = find(ax_mask & mags_per_row == mag & ~is_positive);
+
+                    key_p = ''; key_n = '';
+                    if ~isempty(pos_row)
+                        key_p = [method '_' valid_keys_geom{pos_row(1)}];
+                        if ~isfield(leadfields, key_p); key_p = ''; end
+                    end
+                    if ~isempty(neg_row)
+                        key_n = [method '_' valid_keys_geom{neg_row(1)}];
+                        if ~isfield(leadfields, key_n); key_n = ''; end
+                    end
+
+                    % Store as a 2-element cell so draw loop knows to average
+                    L_all{end+1}   = {key_p, key_n, min_s_ax}; %#ok<AGROW>
+                    lbl_all{end+1} = sprintf('%s:%dmm', abbrev, mag); %#ok<AGROW>
+                    ok_all(end+1)  = ~isempty(key_p) || ~isempty(key_n); %#ok<AGROW>
+                end
+
+                % Separator after each method block
                 if m_idx < n_loaded
-                    method_sep(end+1) = pos;   %#ok<AGROW>
+                    method_sep(end+1) = numel(L_all); %#ok<AGROW>
                 end
             end
 
-            n_items = numel(item_keys);
-            item_ok = cellfun(@(k) isfield(leadfields, k), item_keys);
+            if sum(ok_all) < 2; continue; end
 
-            if sum(item_ok) < 2
-                fprintf('    Skipping cross-method %s axis, sensor axis %d — insufficient models.\n', ...
-                    ax_label, sens_ax);
-                continue
-            end
+            [re_cell, cc_cell] = compute_pairwise_averaged( ...
+                leadfields, L_all, ok_all, orientation_labels, ...
+                sens_ax, src_range);
 
-            min_s = get_min_sensors_lf(leadfields, item_keys(item_ok), ...
-                orientation_labels{1}, sens_ax);
-
-            [re_cell, cc_cell] = compute_pairwise_per_ori( ...
-                leadfields, item_keys, item_ok, orientation_labels, ...
-                sens_ax, src_range, min_s);
-
-            fig_w = max(1200, n_items * 32 * n_ori + 300);
-            fig_h = max(700,  n_items * 32 * 2 + 200);
+            n_items = numel(L_all);
+            fig_w   = max(800, n_items * 55 * n_ori + 300);
+            fig_h   = max(600, n_items * 55 * 2 + 200);
             fig = figure('Color', 'w', 'Position', [50, 50, fig_w, fig_h]);
             tl  = tiledlayout(2, n_ori, 'TileSpacing', 'compact', 'Padding', 'normal');
-            title(tl, sprintf('Source shifts — cross-method pairwise  |  %s-axis shifts  |  Sensor axis %d of %d', ...
+            title(tl, sprintf('Source shifts — cross-method  |  %s-axis (± averaged)  |  Sensor axis %d of %d', ...
                 ax_label, sens_ax, n_axes), 'FontSize', 13, 'FontWeight', 'bold');
 
             for ori_idx = 1:n_ori
@@ -244,13 +286,13 @@ if run_source
                 odsp = orientation_display{ori_idx};
 
                 hax = nexttile(tl, ori_idx);
-                draw_heatmap(hax, re_cell.(ori) * 100, item_labels, ...
+                draw_heatmap(hax, re_cell.(ori) * 100, lbl_all, ...
                     [odsp '  —  RE (%)'], cool, ...
                     [0, max_nonnan(re_cell.(ori)) * 100], 'RE (%)', ...
                     method_sep, '%.1f');
 
                 hax = nexttile(tl, n_ori + ori_idx);
-                draw_heatmap(hax, cc_cell.(ori) * 100, item_labels, ...
+                draw_heatmap(hax, cc_cell.(ori) * 100, lbl_all, ...
                     [odsp '  —  r² (%)'], flipud(cool), ...
                     [min_nonnan(cc_cell.(ori)) * 100, 100], 'r² (%)', ...
                     method_sep, '%.1f');
@@ -367,85 +409,100 @@ if run_sensor
     end
 
     % ----------------------------------------------------------------
-    % SENSOR CROSS-METHOD (one figure per bundle)
+    % SENSOR CROSS-METHOD (one figure per sensor axis)
+    % Items per method: orig + mean of each bundle (n_sensor_bundles items)
+    % Total items = n_loaded × (1 + n_sensor_bundles), grouped by method
     % ----------------------------------------------------------------
     fprintf('  Sensor cross-method heatmaps...\n');
-    for b = 1:n_sensor_bundles
-        b_mask = valid_bundle_idx == b;
-        b_rows = find(b_mask);   % shift indices for this bundle
+    for sens_ax = 1:n_axes
+        L_all      = {};
+        lbl_all    = {};
+        ok_all     = [];
+        method_sep = [];
 
-        for sens_ax = 1:n_axes
-            item_keys   = {};
-            item_labels = {};
-            method_sep  = [];
-
-            pos = 0;
-            for m_idx = 1:n_loaded
-                method = loaded_methods{m_idx};
-                abbrev = get_abbrev(method, abbrev_map);
-
-                ref_key    = [method '_' sensor_sensitivity_ref_key];
-                shift_keys = cellfun(@(k) [method '_' k], ...
-                    valid_keys_geom(b_rows), 'UniformOutput', false);
-
-                item_keys   = [item_keys,   ref_key,          shift_keys]; %#ok<AGROW>
-                item_labels = [item_labels, {[abbrev ':orig']}, ...
-                    cellfun(@(l) [abbrev ':' l], sen_shift_short(b_rows), ...
-                    'UniformOutput', false)];                              %#ok<AGROW>
-
-                pos = pos + 1 + numel(b_rows);
-                if m_idx < n_loaded
-                    method_sep(end+1) = pos;   %#ok<AGROW>
+        % Collect all valid keys once to determine global min sensors
+        all_valid_keys = {};
+        for m_idx = 1:n_loaded
+            method  = loaded_methods{m_idx};
+            ref_key = [method '_' sensor_sensitivity_ref_key];
+            if isfield(leadfields, ref_key); all_valid_keys{end+1} = ref_key; end %#ok<AGROW>
+            for b = 1:n_sensor_bundles
+                b_rows = find(valid_bundle_idx == b);
+                for ki = 1:numel(b_rows)
+                    k = [method '_' valid_keys_geom{b_rows(ki)}];
+                    if isfield(leadfields, k); all_valid_keys{end+1} = k; end %#ok<AGROW>
                 end
             end
-
-            n_items = numel(item_keys);
-            item_ok = cellfun(@(k) isfield(leadfields, k), item_keys);
-
-            if sum(item_ok) < 2
-                fprintf('    Skipping cross-method bundle %d, sensor axis %d — insufficient models.\n', ...
-                    b, sens_ax);
-                continue
-            end
-
-            min_s = get_min_sensors_lf(leadfields, item_keys(item_ok), ...
-                orientation_labels{1}, sens_ax);
-
-            [re_cell, cc_cell] = compute_pairwise_per_ori( ...
-                leadfields, item_keys, item_ok, orientation_labels, ...
-                sens_ax, src_range, min_s);
-
-            fig_w = max(1200, n_items * 30 * n_ori + 300);
-            fig_h = max(700,  n_items * 30 * 2 + 200);
-            fig = figure('Color', 'w', 'Position', [50, 50, fig_w, fig_h]);
-            tl  = tiledlayout(2, n_ori, 'TileSpacing', 'compact', 'Padding', 'normal');
-            title(tl, sprintf('Sensor shifts — cross-method pairwise  |  %s  |  Sensor axis %d of %d', ...
-                sensor_bundle_display{b}, sens_ax, n_axes), ...
-                'FontSize', 13, 'FontWeight', 'bold');
-
-            for ori_idx = 1:n_ori
-                ori  = orientation_labels{ori_idx};
-                odsp = orientation_display{ori_idx};
-
-                hax = nexttile(tl, ori_idx);
-                draw_heatmap(hax, re_cell.(ori) * 100, item_labels, ...
-                    [odsp '  —  RE (%)'], cool, ...
-                    [0, max_nonnan(re_cell.(ori)) * 100], 'RE (%)', ...
-                    method_sep, '%.1f');
-
-                hax = nexttile(tl, n_ori + ori_idx);
-                draw_heatmap(hax, cc_cell.(ori) * 100, item_labels, ...
-                    [odsp '  —  r² (%)'], flipud(cool), ...
-                    [min_nonnan(cc_cell.(ori)) * 100, 100], 'r² (%)', ...
-                    method_sep, '%.1f');
-            end
-
-            fname = sprintf('sensor_cross_bundle%d_sensorax%d', b, sens_ax);
-            exportgraphics(fig, fullfile(save_dir, [fname '.png']), 'Resolution', 300);
-            saveas(fig, fullfile(save_dir, [fname '.fig']));
-            close(fig);
-            fprintf('    Saved: %s\n', fname);
         end
+        if numel(all_valid_keys) < 2; continue; end
+        min_s_global = get_min_sensors_lf(leadfields, all_valid_keys, ...
+            orientation_labels{1}, sens_ax);
+
+        for m_idx = 1:n_loaded
+            method  = loaded_methods{m_idx};
+            abbrev  = get_abbrev(method, abbrev_map);
+            ref_key = [method '_' sensor_sensitivity_ref_key];
+            ref_ok  = isfield(leadfields, ref_key);
+
+            % --- orig ---
+            L_all{end+1}   = ref_key;          %#ok<AGROW>
+            lbl_all{end+1} = [abbrev ':orig']; %#ok<AGROW>
+            ok_all(end+1)  = ref_ok;           %#ok<AGROW>
+
+            % --- one mean item per bundle ---
+            for b = 1:n_sensor_bundles
+                b_rows = find(valid_bundle_idx == b);
+                bkeys  = cellfun(@(k) [method '_' k], valid_keys_geom(b_rows), ...
+                    'UniformOutput', false);
+                bkeys_ok = bkeys(cellfun(@(k) isfield(leadfields, k), bkeys));
+
+                L_all{end+1}   = {bkeys_ok, min_s_global};               %#ok<AGROW>
+                lbl_all{end+1} = sprintf('%s:%s', abbrev, ...
+                    sensor_bundle_display{b});                             %#ok<AGROW>
+                ok_all(end+1)  = ~isempty(bkeys_ok);                     %#ok<AGROW>
+            end
+
+            if m_idx < n_loaded
+                method_sep(end+1) = numel(L_all); %#ok<AGROW>
+            end
+        end
+
+        if sum(ok_all) < 2; continue; end
+
+        [re_cell, cc_cell] = compute_pairwise_averaged( ...
+            leadfields, L_all, ok_all, orientation_labels, ...
+            sens_ax, src_range);
+
+        n_items = numel(L_all);
+        fig_w   = max(800, n_items * 65 * n_ori + 300);
+        fig_h   = max(600, n_items * 65 * 2 + 200);
+        fig = figure('Color', 'w', 'Position', [50, 50, fig_w, fig_h]);
+        tl  = tiledlayout(2, n_ori, 'TileSpacing', 'compact', 'Padding', 'normal');
+        title(tl, sprintf('Sensor shifts — cross-method (bundle means)  |  Sensor axis %d of %d', ...
+            sens_ax, n_axes), 'FontSize', 13, 'FontWeight', 'bold');
+
+        for ori_idx = 1:n_ori
+            ori  = orientation_labels{ori_idx};
+            odsp = orientation_display{ori_idx};
+
+            hax = nexttile(tl, ori_idx);
+            draw_heatmap(hax, re_cell.(ori) * 100, lbl_all, ...
+                [odsp '  —  RE (%)'], cool, ...
+                [0, max_nonnan(re_cell.(ori)) * 100], 'RE (%)', ...
+                method_sep, '%.1f');
+
+            hax = nexttile(tl, n_ori + ori_idx);
+            draw_heatmap(hax, cc_cell.(ori) * 100, lbl_all, ...
+                [odsp '  —  r² (%)'], flipud(cool), ...
+                [min_nonnan(cc_cell.(ori)) * 100, 100], 'r² (%)', ...
+                method_sep, '%.1f');
+        end
+
+        fname = sprintf('sensor_cross_sensorax%d', sens_ax);
+        exportgraphics(fig, fullfile(save_dir, [fname '.png']), 'Resolution', 300);
+        saveas(fig, fullfile(save_dir, [fname '.fig']));
+        close(fig);
+        fprintf('    Saved: %s\n', fname);
     end
 
     end
@@ -458,6 +515,98 @@ fprintf('pt_plot_heatmaps complete.\n');
 % =========================================================================
 % LOCAL FUNCTIONS
 % =========================================================================
+
+function [re_cell, cc_cell] = compute_pairwise_averaged( ...
+        leadfields, L_spec, ok_all, orientation_labels, sens_ax, src_range)
+% Pairwise RE and r² where each item in L_spec is either:
+%   - a char key (single model), or
+%   - {key_p, key_n, min_s}  (average of two shifts, source cross-method), or
+%   - {keys_cell, min_s}     (average of N shifts, sensor cross-method)
+%
+% Resolves each item to a leadfield matrix, then computes all pairs.
+
+    n     = numel(L_spec);
+    n_ori = numel(orientation_labels);
+    re_cell = struct();
+    cc_cell = struct();
+
+    for oi = 1:n_ori
+        ori    = orientation_labels{oi};
+        re_mat = nan(n, n);
+        cc_mat = nan(n, n);
+
+        % Resolve each item to an L matrix
+        L = cell(1, n);
+        for ki = 1:n
+            if ~ok_all(ki); continue; end
+            spec = L_spec{ki};
+
+            if ischar(spec)
+                % Single model key
+                if isfield(leadfields, spec)
+                    min_s = get_min_sensors_lf(leadfields, {spec}, ori, sens_ax);
+                    L{ki} = build_L_matrix(leadfields, spec, ori, sens_ax, src_range, min_s);
+                end
+
+            elseif iscell(spec) && numel(spec) == 3 && ischar(spec{1})
+                % {key_p, key_n, min_s} — average of + and - shifts
+                key_p = spec{1}; key_n = spec{2}; min_s = spec{3};
+                Lp = []; Ln = [];
+                if ~isempty(key_p) && isfield(leadfields, key_p)
+                    Lp = build_L_matrix(leadfields, key_p, ori, sens_ax, src_range, min_s);
+                end
+                if ~isempty(key_n) && isfield(leadfields, key_n)
+                    Ln = build_L_matrix(leadfields, key_n, ori, sens_ax, src_range, min_s);
+                end
+                if ~isempty(Lp) && ~isempty(Ln)
+                    L{ki} = (Lp + Ln) / 2;
+                elseif ~isempty(Lp)
+                    L{ki} = Lp;
+                elseif ~isempty(Ln)
+                    L{ki} = Ln;
+                end
+
+            elseif iscell(spec) && numel(spec) == 2 && iscell(spec{1})
+                % {keys_cell, min_s} — mean over multiple shift keys (bundle mean)
+                bkeys = spec{1}; min_s = spec{2};
+                Lsum  = [];
+                n_ok  = 0;
+                for bki = 1:numel(bkeys)
+                    if isfield(leadfields, bkeys{bki})
+                        Ltmp = build_L_matrix(leadfields, bkeys{bki}, ori, ...
+                            sens_ax, src_range, min_s);
+                        if isempty(Lsum)
+                            Lsum = Ltmp;
+                        else
+                            Lsum = Lsum + Ltmp;
+                        end
+                        n_ok = n_ok + 1;
+                    end
+                end
+                if n_ok > 0
+                    L{ki} = Lsum / n_ok;
+                end
+            end
+        end
+
+        % Pairwise metrics
+        for ii = 1:n
+            if isempty(L{ii}); continue; end
+            for jj = 1:n
+                if isempty(L{jj}); continue; end
+                % Ensure same size
+                nr = min(size(L{ii}, 1), size(L{jj}, 1));
+                nc = min(size(L{ii}, 2), size(L{jj}, 2));
+                [re_mat(ii,jj), cc_mat(ii,jj)] = pairwise_re_cc( ...
+                    L{ii}(1:nr, 1:nc), L{jj}(1:nr, 1:nc));
+            end
+        end
+
+        re_cell.(ori) = re_mat;
+        cc_cell.(ori) = cc_mat;
+    end
+end
+
 
 function [re_cell, cc_cell] = compute_pairwise_per_ori( ...
         leadfields, item_keys, item_ok, orientation_labels, ...
@@ -568,20 +717,14 @@ function draw_heatmap(hax, data, labels, ttl, cmap, clo, cbar_lbl, sep_lines, fm
         end
     end
 
-    % Cell annotations
-    crange = clo(2) - clo(1);
+    % Cell annotations (always black for readability)
     for r = 1:n
         for c = 1:n
             val = data(r, c);
             if isnan(val); continue; end
-            if crange > 0 && (val - clo(1)) / crange < 0.45
-                tcol = 'w';
-            else
-                tcol = 'k';
-            end
             text(hax, c, r, sprintf(fmt, val), ...
                 'HorizontalAlignment', 'center', 'FontSize', 7, ...
-                'FontWeight', 'bold', 'Color', tcol);
+                'FontWeight', 'bold', 'Color', 'k');
         end
     end
 end
