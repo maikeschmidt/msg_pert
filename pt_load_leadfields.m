@@ -79,7 +79,7 @@ pt_add_functions;
 % USER CONFIGURATION — which forward models are available?
 % =========================================================================
 
-have_bem    = true;   % BEM via Helsinki BEM Framework
+have_bem    = false;   % BEM via Helsinki BEM Framework
 have_fem    = false;   % FEM via DUNEuro
 have_bslaw  = true;   % Biot-Savart (infinite homogeneous space)
 have_sphere = true;   % Single sphere (Sarvas analytical solution)
