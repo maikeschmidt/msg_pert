@@ -306,10 +306,6 @@ for sens_ax = 1:n_axes
 
                 rsq_vals_sorted = squeeze(rsq_store.(ori_label)(sort_idx, src_plot_idx, sens_ax));
 
-                scatter(ax_panel, sorted_disp, rsq_vals_sorted, 35, ...
-                    'MarkerFaceColor', col, 'MarkerEdgeColor', 'w', ...
-                    'LineWidth', 0.5, 'MarkerFaceAlpha', 0.7);
-
                 valid_pts = ~isnan(sorted_disp) & ~isnan(rsq_vals_sorted');
                 if sum(valid_pts) >= 2
                     p     = polyfit(sorted_disp(valid_pts), rsq_vals_sorted(valid_pts), 1);
