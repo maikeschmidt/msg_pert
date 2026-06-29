@@ -81,9 +81,6 @@ for k = 1:numel(methods_in_table)
 end
 n_methods = numel(ordered_methods);
 
-% Line styles to distinguish methods if colours are similar
-line_styles = {'-', '--', ':', '-.'};
-
 % One figure per sensor axis
 for sens_ax = 1:n_axes
     fig = figure('Color', 'w', 'Position', [100, 100, 1400, 420]);
@@ -104,7 +101,6 @@ for sens_ax = 1:n_axes
         for m_idx = 1:n_methods
             mlabel = ordered_methods{m_idx};
             col    = ordered_colors(m_idx,:);
-            lstyle = line_styles{mod(m_idx-1, numel(line_styles)) + 1};
 
             % Filter table rows for this method, orientation, sensor axis
             row_mask = strcmp(T.Method, mlabel) & ...
@@ -113,7 +109,7 @@ for sens_ax = 1:n_axes
             sub = T(row_mask, :);
 
             if isempty(sub)
-                leg_h(m_idx) = plot(ax_panel, NaN, NaN, lstyle, ...
+                leg_h(m_idx) = plot(ax_panel, NaN, NaN, '-', ...
                     'Color', col, 'LineWidth', 2.0);
                 continue
             end
@@ -122,7 +118,7 @@ for sens_ax = 1:n_axes
             [src_sorted, si] = sort(sub.SourcePosition_mm);
             slope_sorted     = sub.Slope(si);
 
-            h = plot(ax_panel, src_sorted, slope_sorted, lstyle, ...
+            h = plot(ax_panel, src_sorted, slope_sorted, '-', ...
                 'Color', col, 'LineWidth', 2.0, ...
                 'Marker', 'o', 'MarkerSize', 5, ...
                 'MarkerFaceColor', col, 'MarkerEdgeColor', 'w');
