@@ -119,9 +119,7 @@ for sens_ax = 1:n_axes
             slope_sorted     = sub.Slope(si);
 
             h = plot(ax_panel, src_sorted, slope_sorted, '-', ...
-                'Color', col, 'LineWidth', 2.0, ...
-                'Marker', 'o', 'MarkerSize', 5, ...
-                'MarkerFaceColor', col, 'MarkerEdgeColor', 'w');
+                'Color', col, 'LineWidth', 2.0);
             leg_h(m_idx) = h;
         end
 
