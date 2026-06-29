@@ -60,9 +60,14 @@ if run_source
         'Cord mesh + bone mesh + source positions shifted ±2, ±4, ±6 mm per axis', ...
     };
 
-    write_table(rsq_store, valid_labels, orientation_labels, orientation_display, ...
-        src_range, src_spacing_mm, n_axes, groups, group_header, group_fn, ...
-        sensitivity_ref_key, save_dir, 'source', header_lines);
+    for m = 1:numel(loaded_methods)
+        method    = loaded_methods{m};
+        rsq_store = rsq_by_method.(method);
+        prefix    = sprintf('source_%s', method);
+        write_table(rsq_store, valid_labels, orientation_labels, orientation_display, ...
+            src_range, src_spacing_mm, n_axes, groups, group_header, group_fn, ...
+            sensitivity_ref_key, save_dir, prefix, header_lines);
+    end
     fprintf('Source table complete.\n\n');
 end
 
@@ -91,9 +96,14 @@ if run_sensor
         '  Bundle 3 — large  (~10mm): U(7,13) mm per axis', ...
     };
 
-    write_table(rsq_store, valid_labels, orientation_labels, orientation_display, ...
-        src_range, src_spacing_mm, n_axes, groups, group_header, group_fn, ...
-        sensor_sensitivity_ref_key, save_dir, 'sensor', header_lines);
+    for m = 1:numel(loaded_methods)
+        method    = loaded_methods{m};
+        rsq_store = rsq_by_method.(method);
+        prefix    = sprintf('sensor_%s', method);
+        write_table(rsq_store, valid_labels, orientation_labels, orientation_display, ...
+            src_range, src_spacing_mm, n_axes, groups, group_header, group_fn, ...
+            sensor_sensitivity_ref_key, save_dir, prefix, header_lines);
+    end
     fprintf('Sensor table complete.\n\n');
 end
 
