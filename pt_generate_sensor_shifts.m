@@ -164,7 +164,11 @@ for b = 1:n_bundles
             if arrays{a}.xy_only
                 shift(3) = 0;
             end
-            grad_s.coilpos = grad_s.coilpos + shift;
+            if isfield(grad_s, 'coilpos')
+                grad_s.coilpos = grad_s.coilpos + shift;
+            elseif isfield(grad_s, 'elecpos')
+                grad_s.elecpos = grad_s.elecpos + shift;
+            end
             if isfield(grad_s, 'chanpos')
                 grad_s.chanpos = grad_s.chanpos + shift;
             end
