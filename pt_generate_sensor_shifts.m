@@ -159,9 +159,10 @@ for b = 1:n_bundles
         for a = 1:numel(arrays)
             field  = arrays{a}.field;
             grad_s = geom_shifted.(field);
-            % ESG (surface electrodes): constrain to XY plane only — Z held fixed
+            % ESG (surface electrodes): constrain to XY plane only — Z held fixed.
+            % Detect by content: ESG has elecpos, MSG/OPM has coilpos.
             shift = dxyz;
-            if arrays{a}.xy_only
+            if isfield(grad_s, 'elecpos') && ~isfield(grad_s, 'coilpos')
                 shift(3) = 0;
             end
             if isfield(grad_s, 'coilpos')
