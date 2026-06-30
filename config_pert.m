@@ -230,9 +230,9 @@ sensor_bundle_colors = [
 % Uses the same geometry as the unshifted source model; only the BEM
 % conductivity of each compartment is scaled by a random factor.
 %
-% Bundle 1 — small  (±5%):   σ × (1 + U(−0.05, +0.05))  per compartment
-% Bundle 2 — medium (±10%):  σ × (1 + U(−0.10, +0.10))
-% Bundle 3 — large  (±50%):  σ × (1 + U(−0.50, +0.50))
+% Bundle 1 — small  (up to +5%):  σ × (1 + U(0, 0.05))  per compartment
+% Bundle 2 — medium (up to +10%): σ × (1 + U(0, 0.10))
+% Bundle 3 — large  (up to +50%): σ × (1 + U(0, 0.50))
 %
 % Run run_conductivity_perturbation.m (in msg_fwd) to generate the files,
 % then set have_bem_cond = true in pt_load_leadfields.
@@ -259,7 +259,7 @@ for b = 1:n_cond_bundles
     end
 end
 
-cond_bundle_display = {'±5% (small)', '±10% (medium)', '±50% (large)'};
+cond_bundle_display = {'+5% (small)', '+10% (medium)', '+50% (large)'};
 
 % Bundle colours (green family — distinct from source orange and sensor blue)
 cond_bundle_colors = [
