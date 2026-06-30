@@ -79,20 +79,22 @@ pt_add_functions;
 % USER CONFIGURATION — which forward models are available?
 % =========================================================================
 
-have_bem    = true;   % BEM via Helsinki BEM Framework
-have_fem    = false;   % FEM via DUNEuro
-have_bslaw  = true;   % Biot-Savart (infinite homogeneous space)
-have_sphere = true;   % Single sphere (Sarvas analytical solution)
+have_bem      = true;    % BEM via Helsinki BEM Framework
+have_fem      = false;   % FEM via DUNEuro
+have_bslaw    = true;    % Biot-Savart (infinite homogeneous space)
+have_sphere   = true;    % Single sphere (Sarvas analytical solution)
+have_bem_cond = false;   % BEM with perturbed tissue conductivities (run_conductivity_perturbation)
 
 % Output paths for each method.
 % BEM and FEM: files are in per-geometry subfolders under the base path.
 % Biot-Savart and sphere: files are in a flat folder (no subfolders).
 % Defaults to forward_fields_base — override if you stored outputs elsewhere.
 
-bem_path    = 'D:\Simulations\Pertubations\fields\bem';
-fem_path    = forward_fields_base;
-bslaw_path  = 'D:\Simulations\Pertubations\fields\bs_law';
-sphere_path = 'D:\Simulations\Pertubations\fields\single_sphere';
+bem_path      = 'D:\Simulations\Pertubations\fields\bem';
+fem_path      = forward_fields_base;
+bslaw_path    = 'D:\Simulations\Pertubations\fields\bs_law';
+sphere_path   = 'D:\Simulations\Pertubations\fields\single_sphere';
+bem_cond_path = 'D:\Simulations\Pertubations\fields\bem_cond';   % SET THIS: from run_conductivity_perturbation
 
 
 % =========================================================================
@@ -101,12 +103,13 @@ sphere_path = 'D:\Simulations\Pertubations\fields\single_sphere';
 
 source_geom_names = [sensitivity_ref_key, sensitivity_keys];
 sensor_geom_names = [sensor_sensitivity_ref_key, sensor_sensitivity_keys];
-all_geom_names    = unique([source_geom_names, sensor_geom_names], 'stable');
+cond_geom_names   = [cond_sensitivity_ref_key, cond_sensitivity_keys];
+all_geom_names    = unique([source_geom_names, sensor_geom_names, cond_geom_names], 'stable');
 
 fprintf('pt_load_leadfields\n');
 fprintf('  %d unique geometry names to search\n', numel(all_geom_names));
-fprintf('  Methods: BEM=%d  FEM=%d  BS=%d  Sphere=%d\n\n', ...
-    have_bem, have_fem, have_bslaw, have_sphere);
+fprintf('  Methods: BEM=%d  FEM=%d  BS=%d  Sphere=%d  BEM-cond=%d\n\n', ...
+    have_bem, have_fem, have_bslaw, have_sphere, have_bem_cond);
 
 
 % =========================================================================
@@ -216,6 +219,40 @@ for g = 1:numel(all_geom_names)
                 key, 1, orientation_labels);
             n_loaded = n_loaded + 1;
             fprintf('    BS:  %s (%s)\n', key, arr);
+        end
+    end
+
+    % ------------------------------------------------------------------
+    % BEM — CONDUCTIVITY PERTURBATION
+    % Key: bem_cond_<geom_full>
+    % Files: <bem_cond_path>/leadfield_<geom_short>_bem_cond_<array>.mat
+    % Variable: leadfield_cord | Scale: 1e15
+    % geom_full for cond files is always the base source-original geometry;
+    % the perturbation variant is encoded in the filename suffix.
+    % ------------------------------------------------------------------
+    if have_bem_cond
+        cond_subdir = fullfile(bem_cond_path, ['geometries_' geom_short]);
+        cond_files  = dir(fullfile(cond_subdir, ...
+            ['leadfield_' geom_short '_bem_cond_*.mat']));
+
+        for cf = 1:numel(cond_files)
+            fname = cond_files(cf).name;
+            tok   = regexp(fname, ...
+                ['leadfield_' geom_short '_bem_cond_(.+)\.mat'], 'tokens');
+            if isempty(tok); continue; end
+            suffix = tok{1}{1};   % e.g. 'bundle1_shift1_front'
+            key    = ['bem_cond_' geom_full '_' suffix];
+
+            tmp = load(fullfile(cond_subdir, fname), 'leadfield_cord');
+            if ~isfield(tmp, 'leadfield_cord')
+                warning('Variable leadfield_cord not found in: %s', fname);
+                continue
+            end
+            [leadfields, abs_max_per_source] = organise_leadfield( ...
+                leadfields, abs_max_per_source, tmp.leadfield_cord, ...
+                key, 1e15, orientation_labels);
+            n_loaded = n_loaded + 1;
+            fprintf('    BEM-cond: %s\n', key);
         end
     end
 

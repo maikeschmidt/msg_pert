@@ -1,17 +1,23 @@
 % pt_generate_source_shifts - Generate geometry files for source-space perturbations
 %
-% Applies systematic shifts to the spinal cord mesh (mesh_wm), bone mesh
+% Applies random 3-D shifts to the spinal cord mesh (mesh_wm), bone mesh
 % (mesh_bone), and source positions (sources_cent.pos) in the original
-% geometry struct. Produces 18 geometry files: ±2, ±4, ±6 mm along each
-% of the X, Y, and Z anatomical axes.
+% geometry struct. Produces 24 geometry files across 3 error bundles
+% (8 random shifts each). Each axis is shifted independently so there is
+% no preferred direction.
+%
+% Shift bundle definitions:
+%   Bundle 1 — small  (~2 mm):  U(1,3)  mm per axis + random sign
+%   Bundle 2 — medium (~5 mm):  U(3,7)  mm per axis + random sign
+%   Bundle 3 — large  (~10 mm): U(7,13) mm per axis + random sign
 %
 % The torso, heart, and lung meshes are NOT shifted — only the structures
-% that move with the spinal cord are perturbed. This models the effect of
-% uncertainty or variability in anatomical understanding of the cord/bone
-% relative to the fixed sensor array and outer body surface.
+% that move with the spinal cord are perturbed. This models uncertainty or
+% variability in the anatomical location of the cord/bone relative to the
+% fixed outer body surface and sensor array.
 %
-% Saves one .mat file per shift and prints the complete list of filenames
-% for pasting into msg_fwd.
+% Shift vectors are randomly generated and printed so they can be pasted
+% back into config_pert.m as source_shift_vectors.
 %
 % USAGE:
 %   pt_generate_source_shifts
@@ -21,17 +27,17 @@
 %   S.geoms_path           - Path to original geometry .mat file
 %   S.perturbed_geoms_path - Output directory for shifted geometry files
 %   S.base_geom_name       - Stem of original geometry file
-%   S.source_shift_mm      - Shift magnitudes in mm (default: [2 4 6])
+%   S.seed                 - Random seed for reproducible shifts (default: 42)
 %
 % OUTPUTS (saved to S.perturbed_geoms_path):
 %   geometries_<base>_source_original.mat           — unshifted reference copy
-%   geometries_<base>_source_X_p2mm.mat             — +2 mm along X
-%   geometries_<base>_source_X_n2mm.mat             — -2 mm along X
-%   ... (18 total shifted files + 1 original copy)
+%   geometries_<base>_source_bundle1_shift1.mat     — Bundle 1, shift 1
+%   ...
+%   geometries_<base>_source_bundle3_shift8.mat     — Bundle 3, shift 8
 %
 % ALSO PRINTS:
-%   List of all geometry file stems to paste into msg_fwd's config_models.m
-%   (or run_bem_leadfields.m) to trigger forward model computation.
+%   Generated shift vectors (for pasting into config_pert.m)
+%   List of all geometry file stems for pasting into msg_fwd
 %
 % DEPENDENCIES:
 %   config_pert
@@ -56,7 +62,7 @@ config_pert;
 if ~isfield(S, 'geoms_path'),           S.geoms_path           = geoms_path;           end
 if ~isfield(S, 'perturbed_geoms_path'), S.perturbed_geoms_path = perturbed_geoms_path; end
 if ~isfield(S, 'base_geom_name'),       S.base_geom_name       = base_geom_name;       end
-if ~isfield(S, 'source_shift_mm'),      S.source_shift_mm      = source_shift_mm;      end
+if ~isfield(S, 'seed'),                 S.seed                 = 42;                   end
 
 if isempty(S.geoms_path) || isempty(S.base_geom_name)
     error('Set S.geoms_path and S.base_geom_name (or configure config_pert.m).');
@@ -82,28 +88,64 @@ fprintf('  sources:   %d positions\n', size(geom.sources_cent.pos, 1));
 ref_name    = [S.base_geom_name '_source_original'];
 ref_outfile = fullfile(S.perturbed_geoms_path, ['geometries_' ref_name '.mat']);
 save(ref_outfile, '-struct', 'geom', '-v7.3');
-fprintf('\nSaved reference (unshifted): %s\n', ref_outfile);
+fprintf('\nSaved reference (unshifted): %s\n\n', ref_outfile);
 
-% Build shift list: ±2,±4,±6 mm × X,Y,Z
-axes     = {'X', 'Y', 'Z'};
-signs    = [+1  +1  +1  -1  -1  -1];
-mags     = [2    4   6   2   4   6 ];
-saved_names = {ref_name};   % collect for filename list
+% Bundle shift range definitions [lower, upper] mm per axis (absolute)
+bundle_ranges = [1, 3; 3, 7; 7, 13];
+n_bundles = 3;
+n_shifts  = 8;
 
-fprintf('\n=== Generating source shift geometries ===\n');
+% Generate shift vectors (each axis independently randomised)
+rng(S.seed);
+shift_vectors = cell(n_bundles, 1);
+
+for b = 1:n_bundles
+    lo = bundle_ranges(b, 1);
+    hi = bundle_ranges(b, 2);
+    vecs = zeros(n_shifts, 3);
+    for s = 1:n_shifts
+        mag   = lo + (hi - lo) * rand(1, 3);       % magnitude per axis
+        signs = (rand(1, 3) > 0.5) * 2 - 1;        % random sign per axis
+        vecs(s, :) = mag .* signs;
+    end
+    shift_vectors{b} = vecs;
+end
+
+% Print shift vectors for pasting into config_pert
+bundle_names = {'Bundle 1 — small  (~2mm)', ...
+                'Bundle 2 — medium (~5mm)', ...
+                'Bundle 3 — large  (~10mm)'};
+fprintf('=================================================================\n');
+fprintf('  PASTE THIS INTO config_pert.m  →  source_shift_vectors\n');
+fprintf('=================================================================\n');
+fprintf('source_shift_vectors = {\n');
+for b = 1:n_bundles
+    fprintf('    %% %s\n', bundle_names{b});
+    fprintf('    [');
+    for s = 1:n_shifts
+        v = shift_vectors{b}(s, :);
+        if s < n_shifts
+            fprintf('%+.2f, %+.2f, %+.2f;\n     ', v(1), v(2), v(3));
+        else
+            fprintf('%+.2f, %+.2f, %+.2f], ...\n', v(1), v(2), v(3));
+        end
+    end
+end
+fprintf('};\n\n');
+
+% Generate and save shifted geometry files
+fprintf('=== Generating source shift geometries ===\n');
 fprintf('  Shifting: mesh_wm, mesh_bone, sources_cent.pos\n');
 fprintf('  Fixed:    mesh_torso, mesh_heart, mesh_lungs\n\n');
 
-for ax_i = 1:3
-    for sh_i = 1:6
-        delta      = zeros(1, 3);
-        delta(ax_i) = signs(sh_i) * mags(sh_i);
+saved_names = {ref_name};
 
-        sign_char   = 'p'; if signs(sh_i) < 0, sign_char = 'n'; end
-        model_name  = sprintf('%s_source_%s_%s%dmm', ...
-            S.base_geom_name, axes{ax_i}, sign_char, mags(sh_i));
-        outfile     = fullfile(S.perturbed_geoms_path, ...
-            ['geometries_' model_name '.mat']);
+for b = 1:n_bundles
+    for s = 1:n_shifts
+        dxyz = shift_vectors{b}(s, :);
+
+        model_name = sprintf('%s_source_bundle%d_shift%d', S.base_geom_name, b, s);
+        outfile    = fullfile(S.perturbed_geoms_path, ['geometries_' model_name '.mat']);
 
         if isfile(outfile)
             fprintf('  Already exists: %s — skipping.\n', model_name);
@@ -111,23 +153,21 @@ for ax_i = 1:3
             continue;
         end
 
-        % Apply shift to cord, bone, and sources only
         geom_shifted = geom;
-        geom_shifted.mesh_wm.vertices      = geom.mesh_wm.vertices      + delta;
-        geom_shifted.mesh_bone.vertices    = geom.mesh_bone.vertices    + delta;
-        geom_shifted.sources_cent.pos      = geom.sources_cent.pos      + delta;
+        geom_shifted.mesh_wm.vertices   = geom.mesh_wm.vertices   + dxyz;
+        geom_shifted.mesh_bone.vertices = geom.mesh_bone.vertices + dxyz;
+        geom_shifted.sources_cent.pos   = geom.sources_cent.pos   + dxyz;
 
         save(outfile, '-struct', 'geom_shifted', '-v7.3');
         saved_names{end+1} = model_name; %#ok<AGROW>
 
-        fprintf('  [%s %s%dmm]  delta=[%+.0f, %+.0f, %+.0f] mm  → %s\n', ...
-            axes{ax_i}, sign_char, mags(sh_i), delta(1), delta(2), delta(3), ...
-            model_name);
+        fprintf('  [Bundle %d  Shift %d]  [%+.1f, %+.1f, %+.1f] mm  → %s\n', ...
+            b, s, dxyz(1), dxyz(2), dxyz(3), model_name);
     end
 end
 
 % Print filename list for msg_fwd
-fprintf('\n\n');
+fprintf('\n');
 fprintf('=================================================================\n');
 fprintf('  PASTE THESE FILENAMES INTO msg_fwd config_models.m\n');
 fprintf('  (or into the filenames cell in run_bem_leadfields.m)\n');

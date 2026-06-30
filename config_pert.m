@@ -21,16 +21,18 @@
 %                              leadfield_geometries_sub001_source_original_bslaw_back.mat
 %                            set base_geom_name = 'sub001'
 %
-%   Source shift parameters (18 configs: ±2,±4,±6 mm × X,Y,Z):
-%     source_shift_mm      - Shift magnitudes, e.g. [2 4 6] mm
-%     source_shift_axes    - Axis labels: {'X','Y','Z'}
-%     sensitivity_ref_key  - Key for the original (unshifted) source model
-%     sensitivity_keys     - [1 x 18] cell array of shifted model keys
-%     sensitivity_labels   - [1 x 18] display labels matching sensitivity_keys
-%     sensitivity_markers  - [1 x 18] marker styles
-%     sensitivity_styles   - [1 x 18] line styles ('+' = solid, '-' = dashed)
-%     sensitivity_shift_axis - [1 x 18] axis index (1=X, 2=Y, 3=Z)
-%     sensitivity_axis_colors - [3 x 3] RGB colours per shift axis
+%   Source shift parameters (24 configs: 3 bundles × 8 random shifts):
+%     source_shift_vectors  - {3×1} cell: each is [8×3] [dx,dy,dz] in mm.
+%                             PASTE from pt_generate_source_shifts output.
+%     n_source_bundles      - 3
+%     n_source_shifts       - 8 (shifts per bundle)
+%     sensitivity_ref_key   - Key for the original (unshifted) source model
+%     sensitivity_keys      - [1 x 24] cell array of shifted model keys
+%     sensitivity_labels    - [1 x 24] display labels
+%     source_bundle_idx     - [1 x 24] bundle index (1, 2, or 3)
+%     source_shift_idx      - [1 x 24] shift index within bundle (1–8)
+%     source_bundle_display - {'~2mm (small)', '~5mm (medium)', '~10mm (large)'}
+%     source_bundle_colors  - [3 x 3] RGB colours per bundle (orange family)
 %
 %   Sensor shift parameters (24 configs: 3 bundles × 8 random shifts):
 %     sensor_shift_vectors          - {3 x 1} cell: each is [8 x 3] matrix of
@@ -102,45 +104,51 @@ base_geom_name       = 'original';   % SET THIS: short stem used in file names,
 % =========================================================================
 % SOURCE SHIFT PARAMETERS
 % =========================================================================
-% 18 configurations: ±2, ±4, ±6 mm × X, Y, Z axes
+% 24 configurations: 3 bundles × 8 random shifts
+% Bundle 1 — small  (~2 mm):  U(1,3)  mm per axis (each axis independently)
+% Bundle 2 — medium (~5 mm):  U(3,7)  mm per axis
+% Bundle 3 — large  (~10 mm): U(7,13) mm per axis
+% Shifts mesh_wm, mesh_bone, sources_cent.pos; torso/heart/lungs unchanged.
 
-source_shift_mm   = [2 4 6];          % magnitudes in mm
-source_shift_axes = {'X', 'Y', 'Z'};  % axis labels
+n_source_bundles = 3;
+n_source_shifts  = 8;
+n_src_total      = n_source_bundles * n_source_shifts;   % = 24
 
-% Expanded signed shifts: +2,+4,+6,-2,-4,-6 per axis, ordered X,Y,Z
-signs  = [+1 +1 +1 -1 -1 -1];
-mags   = [2   4   6  2   4   6];
-n_src_shifts   = 18;
-n_per_axis     = 6;
+% PASTE SHIFT VECTORS HERE after running pt_generate_source_shifts
+% Each cell is one bundle; each row is one [dx dy dz] shift in mm.
+source_shift_vectors = {
+    % Bundle 1 — ~2 mm (small): 8×3 matrix — PASTE from pt_generate_source_shifts output
+    [], ...
+    % Bundle 2 — ~5 mm (medium): 8×3 matrix
+    [], ...
+    % Bundle 3 — ~10 mm (large): 8×3 matrix
+    []
+};
 
-% Auto-build key, label, marker, style, axis-index arrays
 sensitivity_ref_key   = [base_geom_name '_source_original'];
-sensitivity_keys      = cell(1, n_src_shifts);
-sensitivity_labels    = cell(1, n_src_shifts);
-sensitivity_markers   = {'o','s','^','o','s','^', ...
-                          'o','s','^','o','s','^', ...
-                          'o','s','^','o','s','^'};
-sensitivity_styles    = {'-', '-', '-', '--', '--', '--', ...
-                          '-', '-', '-', '--', '--', '--', ...
-                          '-', '-', '-', '--', '--', '--'};
-sensitivity_shift_axis = [ones(1,6) 2*ones(1,6) 3*ones(1,6)];
+sensitivity_keys      = cell(1, n_src_total);
+sensitivity_labels    = cell(1, n_src_total);
+source_bundle_idx     = zeros(1, n_src_total);
+source_shift_idx      = zeros(1, n_src_total);
 
-for ax_i = 1:3
-    for sh_i = 1:6
-        idx = (ax_i-1)*6 + sh_i;
-        sign_char = 'p'; if signs(sh_i) < 0, sign_char = 'n'; end
-        sensitivity_keys{idx}   = sprintf('%s_source_%s_%s%dmm', ...
-            base_geom_name, source_shift_axes{ax_i}, sign_char, mags(sh_i));
-        sensitivity_labels{idx} = sprintf('%s%+dmm', ...
-            source_shift_axes{ax_i}, signs(sh_i)*mags(sh_i));
+for b = 1:n_source_bundles
+    for s = 1:n_source_shifts
+        idx = (b-1)*n_source_shifts + s;
+        sensitivity_keys{idx}   = sprintf('%s_source_bundle%d_shift%d', ...
+            base_geom_name, b, s);
+        sensitivity_labels{idx} = sprintf('Bundle %d  shift %d', b, s);
+        source_bundle_idx(idx)  = b;
+        source_shift_idx(idx)   = s;
     end
 end
 
-% Axis colours (X=blue, Y=orange, Z=green — colour-blind safe)
-sensitivity_axis_colors = [
-    0.00, 0.45, 0.70;   % X — blue
-    0.90, 0.62, 0.00;   % Y — orange
-    0.00, 0.62, 0.45;   % Z — green
+source_bundle_display = {'~2 mm (small)', '~5 mm (medium)', '~10 mm (large)'};
+
+% Bundle colours (orange family — distinct from sensor blue family)
+source_bundle_colors = [
+    0.99, 0.75, 0.44;   % Bundle 1 — light orange
+    0.93, 0.54, 0.13;   % Bundle 2 — orange
+    0.70, 0.25, 0.05;   % Bundle 3 — dark red-orange
 ];
 
 
@@ -212,6 +220,52 @@ sensor_bundle_colors = [
     0.20, 0.60, 0.86;   % Bundle 1 — light blue
     0.05, 0.36, 0.65;   % Bundle 2 — mid blue
     0.00, 0.18, 0.40;   % Bundle 3 — dark blue
+];
+
+
+% =========================================================================
+% CONDUCTIVITY PERTURBATION PARAMETERS (BEM only)
+% =========================================================================
+% 24 configurations: 3 bundles × 8 random perturbations of tissue σ values.
+% Uses the same geometry as the unshifted source model; only the BEM
+% conductivity of each compartment is scaled by a random factor.
+%
+% Bundle 1 — small  (±5%):   σ × (1 + U(−0.05, +0.05))  per compartment
+% Bundle 2 — medium (±10%):  σ × (1 + U(−0.10, +0.10))
+% Bundle 3 — large  (±50%):  σ × (1 + U(−0.50, +0.50))
+%
+% Run run_conductivity_perturbation.m (in msg_fwd) to generate the files,
+% then set have_bem_cond = true in pt_load_leadfields.
+
+n_cond_bundles    = 3;
+n_cond_shifts     = 8;
+n_cond_total      = n_cond_bundles * n_cond_shifts;   % = 24
+cond_bundle_pct   = [0.05, 0.10, 0.50];               % fractional range per bundle
+
+cond_sensitivity_ref_key   = [base_geom_name '_source_original'];
+cond_sensitivity_keys      = cell(1, n_cond_total);
+cond_sensitivity_labels    = cell(1, n_cond_total);
+cond_bundle_idx            = zeros(1, n_cond_total);
+cond_shift_idx             = zeros(1, n_cond_total);
+
+for b = 1:n_cond_bundles
+    for s = 1:n_cond_shifts
+        idx = (b-1)*n_cond_shifts + s;
+        cond_sensitivity_keys{idx}   = sprintf('%s_cond_bundle%d_shift%d', ...
+            base_geom_name, b, s);
+        cond_sensitivity_labels{idx} = sprintf('Bundle %d  shift %d', b, s);
+        cond_bundle_idx(idx)         = b;
+        cond_shift_idx(idx)          = s;
+    end
+end
+
+cond_bundle_display = {'±5% (small)', '±10% (medium)', '±50% (large)'};
+
+% Bundle colours (green family — distinct from source orange and sensor blue)
+cond_bundle_colors = [
+    0.72, 0.92, 0.72;   % Bundle 1 — light green
+    0.27, 0.68, 0.27;   % Bundle 2 — mid green
+    0.10, 0.40, 0.10;   % Bundle 3 — dark green
 ];
 
 

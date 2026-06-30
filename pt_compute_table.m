@@ -50,10 +50,9 @@ if run_source
     save_dir = fullfile(save_base_dir, 'perturbation_analysis', 'source');
     if ~exist(save_dir, 'dir'); mkdir(save_dir); end
 
-    groups       = {'X (LR)', 'Y (RC)', 'Z (VD)'};
-    group_header = 'Shift axis';
-    ax_names     = {'X (LR)', 'Y (RC)', 'Z (VD)'};
-    group_fn     = @(i) ax_names{valid_shift_axis(i)};
+    groups       = source_bundle_display;
+    group_header = 'Error bundle';
+    group_fn     = @(i) source_bundle_display{valid_source_bundle_idx(i)};
 
     header_lines = {
         '=== SOURCE POSITION PERTURBATION — SUMMARY TABLE ===', ...

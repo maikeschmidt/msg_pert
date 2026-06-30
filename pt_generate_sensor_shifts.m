@@ -157,11 +157,16 @@ for b = 1:n_bundles
 
         geom_shifted = geom;
         for a = 1:numel(arrays)
-            field       = arrays{a}.field;
-            grad_s      = geom_shifted.(field);
-            grad_s.coilpos = grad_s.coilpos + dxyz;
+            field  = arrays{a}.field;
+            grad_s = geom_shifted.(field);
+            % ESG (surface electrodes): constrain to XY plane only — Z held fixed
+            shift = dxyz;
+            if arrays{a}.xy_only
+                shift(3) = 0;
+            end
+            grad_s.coilpos = grad_s.coilpos + shift;
             if isfield(grad_s, 'chanpos')
-                grad_s.chanpos = grad_s.chanpos + dxyz;
+                grad_s.chanpos = grad_s.chanpos + shift;
             end
             geom_shifted.(field) = grad_s;
         end
@@ -194,26 +199,71 @@ end
 % ---- Local function ----
 
 function arrays = detect_sensor_arrays(geom, model_name)
-% Detect which sensor array fields are present in the geometry struct.
+% Detect sensor arrays in geometry. Returns struct array with fields:
+%   .field   — fieldname in geom struct
+%   .label   — 'front', 'back', or 'experimental'
+%   .xy_only — true for ESG (sensors_2axis); shift constrained to XY plane
+%
+% ESG surface electrodes use sensors_2axis fields — shifts in X/Y only.
+% MSG/OPM coils use coils_3axis / coils_2axis — full 3D shifts.
     arrays = {};
+
+    % Experimental / custom single array
     if isfield(geom, 'experimental_sensors')
-        arrays{end+1} = struct('field', 'experimental_sensors', 'label', 'experimental');
+        arrays{end+1} = struct('field', 'experimental_sensors', ...
+            'label', 'experimental', 'xy_only', false);
     end
+
+    % Front array — check MSG (3axis/2axis coils) then ESG (sensors_2axis)
     if isfield(geom, 'front_coils_3axis')
-        arrays{end+1} = struct('field', 'front_coils_3axis', 'label', 'front');
+        arrays{end+1} = struct('field', 'front_coils_3axis', ...
+            'label', 'front', 'xy_only', false);
     elseif isfield(geom, 'front_coils_2axis')
-        arrays{end+1} = struct('field', 'front_coils_2axis', 'label', 'front');
+        arrays{end+1} = struct('field', 'front_coils_2axis', ...
+            'label', 'front', 'xy_only', false);
+    elseif isfield(geom, 'front_sensors_2axis')
+        arrays{end+1} = struct('field', 'front_sensors_2axis', ...
+            'label', 'front', 'xy_only', true);
     elseif isfield(geom, 'front_sensors')
-        arrays{end+1} = struct('field', 'front_sensors', 'label', 'front');
+        arrays{end+1} = struct('field', 'front_sensors', ...
+            'label', 'front', 'xy_only', false);
     end
+
+    % Back array
     if isfield(geom, 'back_coils_3axis')
-        arrays{end+1} = struct('field', 'back_coils_3axis', 'label', 'back');
+        arrays{end+1} = struct('field', 'back_coils_3axis', ...
+            'label', 'back', 'xy_only', false);
     elseif isfield(geom, 'back_coils_2axis')
-        arrays{end+1} = struct('field', 'back_coils_2axis', 'label', 'back');
+        arrays{end+1} = struct('field', 'back_coils_2axis', ...
+            'label', 'back', 'xy_only', false);
+    elseif isfield(geom, 'back_sensors_2axis')
+        arrays{end+1} = struct('field', 'back_sensors_2axis', ...
+            'label', 'back', 'xy_only', true);
     elseif isfield(geom, 'back_sensors')
-        arrays{end+1} = struct('field', 'back_sensors', 'label', 'back');
+        arrays{end+1} = struct('field', 'back_sensors', ...
+            'label', 'back', 'xy_only', false);
     end
+
+    % Also scan for any field containing 'sensors_2axis' not caught above
+    all_fields = fieldnames(geom);
+    for fi = 1:numel(all_fields)
+        fn = all_fields{fi};
+        if contains(fn, 'sensors_2axis') && ...
+                ~any(strcmp(fn, cellfun(@(a) a.field, arrays, 'UniformOutput', false)))
+            arrays{end+1} = struct('field', fn, 'label', fn, 'xy_only', true); %#ok<AGROW>
+            fprintf('  Detected additional ESG array (XY-only): %s\n', fn);
+        end
+    end
+
     if isempty(arrays)
         warning('No sensor array fields found in geometry: %s', model_name);
+    end
+
+    % Report XY-only constraint for any ESG arrays
+    for a = 1:numel(arrays)
+        if arrays{a}.xy_only
+            fprintf('  ESG array detected (%s) — shifts constrained to XY plane (Z=0)\n', ...
+                arrays{a}.field);
+        end
     end
 end
