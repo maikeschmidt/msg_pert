@@ -93,6 +93,13 @@ fprintf('Saved reference (unshifted): %s\n\n', ref_outfile);
 % Bundle shift range definitions [lower, upper] mm per axis (absolute)
 bundle_ranges = [1, 3; 3, 7; 7, 13];
 
+% Detect if all arrays are ESG (elecpos only) → constrain shifts to XY plane
+is_esg = all(cellfun(@(a) isfield(geom.(a.field), 'elecpos') && ...
+    ~isfield(geom.(a.field), 'coilpos'), arrays));
+if is_esg
+    fprintf('  ESG geometry detected — shift vectors will be XY only (Z=0)\n\n');
+end
+
 % Generate shift vectors
 rng(S.seed);
 n_bundles = 3;
@@ -104,9 +111,12 @@ for b = 1:n_bundles
     hi = bundle_ranges(b, 2);
     vecs = zeros(n_shifts, 3);
     for s = 1:n_shifts
-        mag   = lo + (hi - lo) * rand(1, 3);       % magnitude per axis
-        signs = (rand(1, 3) > 0.5) * 2 - 1;        % random sign per axis
+        mag   = lo + (hi - lo) * rand(1, 3);
+        signs = (rand(1, 3) > 0.5) * 2 - 1;
         vecs(s, :) = mag .* signs;
+    end
+    if is_esg
+        vecs(:, 3) = 0;   % Z=0 for surface electrodes
     end
     shift_vectors{b} = vecs;
 end
