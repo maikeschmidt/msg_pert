@@ -216,6 +216,21 @@ if run_cond
 
         min_sensors = get_min_sensors(leadfields, ref_key, valid_cond_keys, orientation_labels);
 
+        % Compute mean % conductivity change per realisation (replays the same
+        % rng as run_conductivity_perturbation so values are exact)
+        rng(cond_seed);
+        cond_mean_pct = nan(1, n_cond_total);
+        for b_tmp = 1:n_cond_bundles
+            pct_tmp    = cond_bundle_pct(b_tmp);
+            deltas_tmp = rand(n_cond_shifts, n_cond_compartments) * pct_tmp;
+            for s_tmp = 1:n_cond_shifts
+                idx_tmp = (b_tmp-1)*n_cond_shifts + s_tmp;
+                cond_mean_pct(idx_tmp) = mean(deltas_tmp(s_tmp,:)) * 100;
+            end
+        end
+        % Subset to valid keys only
+        valid_cond_mean_pct = cond_mean_pct(valid_mask);
+
         rsq_by_method  = struct();
         loaded_methods = {'bem'};
         rsq_by_method.bem = compute_rsq(leadfields, ref_key, valid_cond_keys, ...
@@ -226,6 +241,7 @@ if run_cond
             'rsq_by_method', 'loaded_methods', ...
             'valid_cond_keys', 'valid_cond_labels', 'valid_mask', ...
             'valid_cond_bundle_idx', 'valid_cond_shift_idx', ...
+            'valid_cond_mean_pct', ...
             'n_sources', 'n_axes', 'src_range', 'n_src_plot', ...
             'distances', 'marker_idx', '-v7.3');
         fprintf('  Saved: %s\n', outfile);

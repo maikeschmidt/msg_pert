@@ -111,14 +111,21 @@ if run_source
                     ax = nexttile(tl, (bund-1)*n_ori + ori_idx);
                     hold(ax, 'on');
 
-                    tile_rsq = zeros(numel(bund_rows), numel(distances));
-                    for i = 1:numel(bund_rows)
+                    n_in_bundle = numel(bund_rows);
+                    tile_rsq = zeros(n_in_bundle, numel(distances));
+                    for i = 1:n_in_bundle
                         tile_rsq(i,:) = squeeze(rsq_store.(ori_label)(bund_rows(i), :, sens_ax));
                     end
-                    for i = 1:numel(bund_rows)
-                        plot(ax, distances, tile_rsq(i,:), '-', ...
-                            'Color', bund_col, 'LineWidth', pub_line_width * 0.7, ...
-                            'Marker', 'none');
+                    leg_handles = gobjects(n_in_bundle, 1);
+                    for i = 1:n_in_bundle
+                        t   = (i-1) / max(n_in_bundle-1, 1);
+                        col = bund_col * (0.5 + 0.5*(1-t)) + (1-(0.5+0.5*(1-t)))*[1 1 1];
+                        col = min(1, max(0, col));
+                        leg_handles(i) = plot(ax, distances, tile_rsq(i,:), ...
+                            '-', 'Color', col, 'LineWidth', pub_line_width - 0.5, ...
+                            'Marker', 'o', 'MarkerIndices', marker_idx, ...
+                            'MarkerSize', pub_marker_size - 1, ...
+                            'MarkerFaceColor', col, 'MarkerEdgeColor', col);
                     end
 
                     add_ref_lines(ax);
@@ -138,13 +145,11 @@ if run_source
                         title(ax, orientation_display{ori_idx}, 'FontSize', 12);
                     end
                     if ori_idx == n_ori
-                        % Dummy handle for legend
-                        h = plot(ax, NaN, NaN, '-', 'Color', bund_col, ...
-                            'LineWidth', pub_line_width);
-                        lgd = legend(ax, h, source_bundle_display{bund}, ...
+                        shift_labels = sensitivity_labels(bund_mask);
+                        lgd = legend(ax, leg_handles, shift_labels(1:n_in_bundle), ...
                             'Location', 'eastoutside', 'FontSize', 9);
                         lgd.Box = 'off';
-                        title(lgd, 'Bundle');
+                        title(lgd, 'Shift');
                     end
                     hold(ax, 'off');
                 end
@@ -185,7 +190,10 @@ if run_source
                     mean_rsq = mean(bund_rsq, 1, 'omitnan');
                     all_tile = [all_tile; bund_rsq]; %#ok<AGROW>
                     leg_h(bund) = plot(ax, distances, mean_rsq, '-', ...
-                        'Color', bund_col, 'LineWidth', pub_line_width);
+                        'Color', bund_col, 'LineWidth', pub_line_width + 0.5, ...
+                        'Marker', 'o', 'MarkerIndices', marker_idx, ...
+                        'MarkerSize', pub_marker_size, ...
+                        'MarkerFaceColor', bund_col, 'MarkerEdgeColor', bund_col);
                 end
 
                 add_ref_lines(ax);

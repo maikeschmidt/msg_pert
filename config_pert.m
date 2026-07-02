@@ -258,10 +258,12 @@ sensor_bundle_colors = [
 % Run run_conductivity_perturbation.m (in msg_fwd) to generate the files,
 % then set have_bem_cond = true in pt_load_leadfields.
 
-n_cond_bundles    = 3;
-n_cond_shifts     = 8;
-n_cond_total      = n_cond_bundles * n_cond_shifts;   % = 24
-cond_bundle_pct   = [0.05, 0.10, 0.50];               % fractional range per bundle
+n_cond_bundles        = 3;
+n_cond_shifts         = 8;
+n_cond_total          = n_cond_bundles * n_cond_shifts;   % = 24
+cond_bundle_pct       = [0.05, 0.10, 0.50];               % fractional range per bundle
+cond_seed             = 99;    % must match seed in run_conductivity_perturbation.m
+n_cond_compartments   = 5;     % SET THIS: number of BEM compartments in your geometry
 
 cond_sensitivity_ref_key   = [base_geom_name '_source_original'];
 cond_sensitivity_keys      = cell(1, n_cond_total);
