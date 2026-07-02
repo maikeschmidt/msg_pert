@@ -603,7 +603,7 @@ if run_cond
 
     % ----------------------------------------------------------------
     % COND DETAIL — per sensor axis
-    % Layout: n_cond_bund rows × n_ori cols; 8 individual lines per tile
+    % Layout: n_cond_bund rows × n_ori cols; 8 shaded individual lines per tile
     % ----------------------------------------------------------------
     fprintf('  Conductivity detail figures...\n');
     for sens_ax = 1:n_axes
@@ -615,27 +615,31 @@ if run_cond
         ylabel(tl, 'r²  (perturbed vs nominal BEM)', 'FontSize', 12);
 
         for bund = 1:n_cond_bund
-            bund_mask = valid_cond_bundle_idx == bund;
-            bund_rows = find(bund_mask);
-            n_in_bund = numel(bund_rows);
-            bund_col  = cond_bundle_colors(bund, :);
+            bund_mask   = valid_cond_bundle_idx == bund;
+            bund_rows   = find(bund_mask);
+            n_in_bundle = numel(bund_rows);
+            bcolor      = cond_bundle_colors(bund, :);
 
             for ori_idx = 1:n_ori
                 ori_label = orientation_labels{ori_idx};
                 ax = nexttile(tl, (bund-1)*n_ori + ori_idx);
                 hold(ax, 'on');
+                leg_handles = gobjects(n_in_bundle, 1);
 
-                tile_rsq = zeros(n_in_bund, numel(distances));
-                for i = 1:n_in_bund
+                tile_rsq = zeros(n_in_bundle, numel(distances));
+                for i = 1:n_in_bundle
                     tile_rsq(i,:) = squeeze(rsq_store.(ori_label)(bund_rows(i), :, sens_ax));
                 end
 
-                for i = 1:n_in_bund
-                    t   = (i-1) / max(n_in_bund-1, 1);
-                    col = bund_col * (0.5 + 0.5*(1-t)) + (1 - (0.5 + 0.5*(1-t))) * [1 1 1];
+                for i = 1:n_in_bundle
+                    t   = (i-1) / max(n_in_bundle-1, 1);
+                    col = bcolor * (0.5 + 0.5*(1-t)) + (1 - (0.5 + 0.5*(1-t))) * [1 1 1];
                     col = min(1, max(0, col));
-                    plot(ax, distances, tile_rsq(i,:), '-', ...
-                        'Color', col, 'LineWidth', pub_line_width * 0.7, 'Marker', 'none');
+                    leg_handles(i) = plot(ax, distances, tile_rsq(i,:), ...
+                        '-', 'Color', col, 'LineWidth', pub_line_width - 0.5, ...
+                        'Marker', 'o', 'MarkerIndices', marker_idx, ...
+                        'MarkerSize', pub_marker_size - 1, ...
+                        'MarkerFaceColor', col, 'MarkerEdgeColor', col);
                 end
 
                 add_ref_lines(ax);
@@ -649,17 +653,17 @@ if run_cond
 
                 if ori_idx == 1
                     ylabel(ax, {cond_bundle_display{bund}; 'r²'}, ...
-                        'FontSize', 11, 'Color', bund_col);
+                        'FontSize', 11, 'Color', bcolor);
                 end
                 if bund == 1
                     title(ax, orientation_display{ori_idx}, 'FontSize', 12);
                 end
                 if ori_idx == n_ori
-                    h = plot(ax, NaN, NaN, '-', 'Color', bund_col, 'LineWidth', pub_line_width);
-                    lgd = legend(ax, h, cond_bundle_display{bund}, ...
+                    shift_labels = valid_cond_labels(bund_mask);
+                    lgd = legend(ax, leg_handles, shift_labels(1:n_in_bundle), ...
                         'Location', 'eastoutside', 'FontSize', 9);
                     lgd.Box = 'off';
-                    title(lgd, 'Bundle');
+                    title(lgd, 'Shift');
                 end
                 hold(ax, 'off');
             end
@@ -674,7 +678,7 @@ if run_cond
 
     % ----------------------------------------------------------------
     % COND SUMMARY — per sensor axis
-    % Layout: 1 row × n_ori cols; one mean line per bundle
+    % Layout: 1 row × n_ori cols; one mean line per bundle with markers
     % ----------------------------------------------------------------
     fprintf('  Conductivity summary figures...\n');
     for sens_ax = 1:n_axes
@@ -695,7 +699,7 @@ if run_cond
 
             for bund = 1:n_cond_bund
                 bund_rows = find(valid_cond_bundle_idx == bund);
-                bund_col  = cond_bundle_colors(bund, :);
+                bcolor    = cond_bundle_colors(bund, :);
 
                 rsq_all = squeeze(rsq_store.(ori_label)(bund_rows, :, sens_ax));
                 if numel(bund_rows) > 1
@@ -706,10 +710,10 @@ if run_cond
                 all_tile = [all_tile; rsq_all]; %#ok<AGROW>
 
                 leg_handles(bund) = plot(ax, distances, rsq_mean, '-', ...
-                    'Color', bund_col, 'LineWidth', pub_line_width + 0.5, ...
+                    'Color', bcolor, 'LineWidth', pub_line_width + 0.5, ...
                     'Marker', 'o', 'MarkerIndices', marker_idx, ...
                     'MarkerSize', pub_marker_size, ...
-                    'MarkerFaceColor', bund_col, 'MarkerEdgeColor', bund_col);
+                    'MarkerFaceColor', bcolor, 'MarkerEdgeColor', bcolor);
             end
 
             add_ref_lines(ax);
