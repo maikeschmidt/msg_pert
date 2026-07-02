@@ -53,6 +53,7 @@ clc
 
 run_source = true;
 run_sensor = true;
+run_cond   = true;
 
 config_pert;
 pt_add_functions;
@@ -575,6 +576,170 @@ if run_sensor
 
     end
     fprintf('Sensor figures complete.\n\n');
+end
+
+%% =========================================================================
+%% CONDUCTIVITY MODE
+%% =========================================================================
+
+if run_cond
+    fprintf('CONDUCTIVITY PERTURBATION FIGURES\n');
+
+    cond_file = fullfile(forward_fields_base, 'pert_cond_rsq.mat');
+    if ~isfile(cond_file)
+        error('Cond r² file not found: %s\nRun pt_compute_rsq first.', cond_file);
+    end
+    load(cond_file);   %#ok<LOAD>
+
+    if isempty(valid_cond_keys)
+        warning('No conductivity perturbation results found — skipping cond figures.');
+    else
+
+    save_dir = fullfile(save_base_dir, 'perturbation_analysis', 'cond');
+    if ~exist(save_dir, 'dir'); mkdir(save_dir); end
+
+    rsq_store     = rsq_by_method.bem;
+    n_cond_bund   = numel(cond_bundle_display);
+
+    % ----------------------------------------------------------------
+    % COND DETAIL — per sensor axis
+    % Layout: n_cond_bund rows × n_ori cols; 8 individual lines per tile
+    % ----------------------------------------------------------------
+    fprintf('  Conductivity detail figures...\n');
+    for sens_ax = 1:n_axes
+        fig = figure('Color', 'w', 'Position', [50, 50, 1400, 960]);
+        tl  = tiledlayout(n_cond_bund, n_ori, 'TileSpacing', 'compact', 'Padding', 'normal');
+        title(tl, sprintf('[BEM]  Conductivity perturbation — all realisations  |  Sensor axis %d of %d', ...
+            sens_ax, n_axes), 'FontSize', 14, 'FontWeight', 'bold');
+        xlabel(tl, 'Distance along spinal cord (mm)', 'FontSize', 12);
+        ylabel(tl, 'r²  (perturbed vs nominal BEM)', 'FontSize', 12);
+
+        for bund = 1:n_cond_bund
+            bund_mask = valid_cond_bundle_idx == bund;
+            bund_rows = find(bund_mask);
+            n_in_bund = numel(bund_rows);
+            bund_col  = cond_bundle_colors(bund, :);
+
+            for ori_idx = 1:n_ori
+                ori_label = orientation_labels{ori_idx};
+                ax = nexttile(tl, (bund-1)*n_ori + ori_idx);
+                hold(ax, 'on');
+
+                tile_rsq = zeros(n_in_bund, numel(distances));
+                for i = 1:n_in_bund
+                    tile_rsq(i,:) = squeeze(rsq_store.(ori_label)(bund_rows(i), :, sens_ax));
+                end
+
+                for i = 1:n_in_bund
+                    t   = (i-1) / max(n_in_bund-1, 1);
+                    col = bund_col * (0.5 + 0.5*(1-t)) + (1 - (0.5 + 0.5*(1-t))) * [1 1 1];
+                    col = min(1, max(0, col));
+                    plot(ax, distances, tile_rsq(i,:), '-', ...
+                        'Color', col, 'LineWidth', pub_line_width * 0.7, 'Marker', 'none');
+                end
+
+                add_ref_lines(ax);
+                xlim(ax, [distances(1), distances(end)]);
+                y_lo = max(0,    floor(min(tile_rsq(:))*100)/100 - 0.01);
+                y_hi = min(1.05, ceil(max(tile_rsq(:))*100)/100 + 0.01);
+                ylim(ax, [y_lo, y_hi]);
+                xticks(ax, 0:20:ceil(distances(end)));
+                grid(ax, 'on');
+                set(ax, 'FontSize', 11, 'LineWidth', 1.0, 'TickDir', 'out');
+
+                if ori_idx == 1
+                    ylabel(ax, {cond_bundle_display{bund}; 'r²'}, ...
+                        'FontSize', 11, 'Color', bund_col);
+                end
+                if bund == 1
+                    title(ax, orientation_display{ori_idx}, 'FontSize', 12);
+                end
+                if ori_idx == n_ori
+                    h = plot(ax, NaN, NaN, '-', 'Color', bund_col, 'LineWidth', pub_line_width);
+                    lgd = legend(ax, h, cond_bundle_display{bund}, ...
+                        'Location', 'eastoutside', 'FontSize', 9);
+                    lgd.Box = 'off';
+                    title(lgd, 'Bundle');
+                end
+                hold(ax, 'off');
+            end
+        end
+
+        fname = sprintf('cond_detail_sensorax%d', sens_ax);
+        exportgraphics(fig, fullfile(save_dir, [fname '.png']), 'Resolution', 300);
+        saveas(fig, fullfile(save_dir, [fname '.fig']));
+        close(fig);
+        fprintf('    Saved: %s\n', fname);
+    end
+
+    % ----------------------------------------------------------------
+    % COND SUMMARY — per sensor axis
+    % Layout: 1 row × n_ori cols; one mean line per bundle
+    % ----------------------------------------------------------------
+    fprintf('  Conductivity summary figures...\n');
+    for sens_ax = 1:n_axes
+        fig = figure('Color', 'w', 'Position', [50, 50, 1400, 420]);
+        tl  = tiledlayout(1, n_ori, 'TileSpacing', 'compact', 'Padding', 'normal');
+        title(tl, sprintf('[BEM]  Conductivity perturbation — bundle means  |  Sensor axis %d of %d', ...
+            sens_ax, n_axes), 'FontSize', 14, 'FontWeight', 'bold');
+        xlabel(tl, 'Distance along spinal cord (mm)', 'FontSize', 12);
+        ylabel(tl, 'r²  (perturbed vs nominal BEM)', 'FontSize', 12);
+
+        for ori_idx = 1:n_ori
+            ori_label = orientation_labels{ori_idx};
+            ax = nexttile(tl);
+            hold(ax, 'on');
+
+            all_tile    = [];
+            leg_handles = gobjects(n_cond_bund, 1);
+
+            for bund = 1:n_cond_bund
+                bund_rows = find(valid_cond_bundle_idx == bund);
+                bund_col  = cond_bundle_colors(bund, :);
+
+                rsq_all = squeeze(rsq_store.(ori_label)(bund_rows, :, sens_ax));
+                if numel(bund_rows) > 1
+                    rsq_mean = mean(rsq_all, 1);
+                else
+                    rsq_mean = rsq_all;
+                end
+                all_tile = [all_tile; rsq_all]; %#ok<AGROW>
+
+                leg_handles(bund) = plot(ax, distances, rsq_mean, '-', ...
+                    'Color', bund_col, 'LineWidth', pub_line_width + 0.5, ...
+                    'Marker', 'o', 'MarkerIndices', marker_idx, ...
+                    'MarkerSize', pub_marker_size, ...
+                    'MarkerFaceColor', bund_col, 'MarkerEdgeColor', bund_col);
+            end
+
+            add_ref_lines(ax);
+            xlim(ax, [distances(1), distances(end)]);
+            y_lo = max(0,    floor(min(all_tile(:))*100)/100 - 0.01);
+            y_hi = min(1.05, ceil(max(all_tile(:))*100)/100 + 0.01);
+            ylim(ax, [y_lo, y_hi]);
+            xticks(ax, 0:20:ceil(distances(end)));
+            grid(ax, 'on');
+            set(ax, 'FontSize', 11, 'LineWidth', 1.0, 'TickDir', 'out');
+            title(ax, orientation_display{ori_idx}, 'FontSize', 12);
+            if ori_idx == 1; ylabel(ax, 'r²', 'FontSize', 11); end
+            if ori_idx == n_ori
+                lgd = legend(ax, leg_handles, cond_bundle_display, ...
+                    'Location', 'eastoutside', 'FontSize', 9);
+                lgd.Box = 'off';
+                title(lgd, 'Bundle');
+            end
+            hold(ax, 'off');
+        end
+
+        fname = sprintf('cond_summary_sensorax%d', sens_ax);
+        exportgraphics(fig, fullfile(save_dir, [fname '.png']), 'Resolution', 300);
+        saveas(fig, fullfile(save_dir, [fname '.fig']));
+        close(fig);
+        fprintf('    Saved: %s\n', fname);
+    end
+
+    end
+    fprintf('Conductivity figures complete.\n\n');
 end
 
 fprintf('pt_plot_curves complete.\n');
