@@ -83,7 +83,7 @@ have_bem      = true;    % BEM via Helsinki BEM Framework
 have_fem      = false;   % FEM via DUNEuro
 have_bslaw    = true;    % Biot-Savart (infinite homogeneous space)
 have_sphere   = false;    % Single sphere (Sarvas analytical solution)
-have_bem_cond = true;   % BEM with perturbed tissue conductivities (run_conductivity_perturbation)
+have_bem_cond = false;   % BEM with perturbed tissue conductivities (run_conductivity_perturbation)
 
 % Output paths for each method.
 % BEM and FEM: files are in per-geometry subfolders under the base path.
