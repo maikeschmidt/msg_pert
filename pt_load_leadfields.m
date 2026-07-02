@@ -101,10 +101,12 @@ bem_cond_path = 'D:\Simulations\Pertubations\fields\bem_cond_msg';   % SET THIS:
 % BUILD LIST OF ALL GEOMETRY NAMES TO LOAD
 % =========================================================================
 
+% BEM-cond files are all stored under the original source geometry —
+% they are NOT separate geometry variants, so they are handled in their
+% own section below (not in the main geometry loop).
 source_geom_names = [sensitivity_ref_key, sensitivity_keys];
 sensor_geom_names = [sensor_sensitivity_ref_key, sensor_sensitivity_keys];
-cond_geom_names   = [cond_sensitivity_ref_key, cond_sensitivity_keys];
-all_geom_names    = unique([source_geom_names, sensor_geom_names, cond_geom_names], 'stable');
+all_geom_names    = unique([source_geom_names, sensor_geom_names], 'stable');
 
 fprintf('pt_load_leadfields\n');
 fprintf('  %d unique geometry names to search\n', numel(all_geom_names));
@@ -223,41 +225,6 @@ for g = 1:numel(all_geom_names)
     end
 
     % ------------------------------------------------------------------
-    % BEM — CONDUCTIVITY PERTURBATION
-    % Key: bem_cond_<geom_full>
-    % Files: <bem_cond_path>/leadfield_<geom_short>_bem_cond_<array>.mat
-    % Variable: leadfield_cord | Scale: 1e15
-    % geom_full for cond files is always the base source-original geometry;
-    % the perturbation variant is encoded in the filename suffix.
-    % ------------------------------------------------------------------
-    if have_bem_cond
-        cond_subdir = fullfile(bem_cond_path, ['geometries_' geom_short]);
-        cond_files  = dir(fullfile(cond_subdir, ...
-            ['leadfield_' geom_short '_bem_cond_*.mat']));
-
-        for cf = 1:numel(cond_files)
-            fname = cond_files(cf).name;
-            tok   = regexp(fname, ...
-                ['leadfield_' geom_short '_bem_cond_(bundle\d+_shift\d+)_(.+)\.mat'], 'tokens');
-            if isempty(tok); continue; end
-            bund_shift = tok{1}{1};   % e.g. 'bundle1_shift1'
-            arr        = tok{1}{2};   % e.g. 'front' or 'back'
-            key        = ['bem_cond_' geom_full '_' bund_shift];
-
-            tmp = load(fullfile(cond_subdir, fname), 'leadfield_cord');
-            if ~isfield(tmp, 'leadfield_cord')
-                warning('Variable leadfield_cord not found in: %s', fname);
-                continue
-            end
-            [leadfields, abs_max_per_source] = organise_leadfield( ...
-                leadfields, abs_max_per_source, tmp.leadfield_cord, ...
-                key, 1e15, orientation_labels);
-            n_loaded = n_loaded + 1;
-            fprintf('    BEM-cond: %s (%s)\n', key, arr);
-        end
-    end
-
-    % ------------------------------------------------------------------
     % SINGLE SPHERE
     % Key: sphere_<geom_full>
     % Files: <sphere_path>/leadfield_geometries_<geom_full>_sphere_<array>.mat
@@ -286,6 +253,46 @@ for g = 1:numel(all_geom_names)
             n_loaded = n_loaded + 1;
             fprintf('    Sp:  %s (%s)\n', key, arr);
         end
+    end
+end
+
+% =========================================================================
+% BEM — CONDUCTIVITY PERTURBATION (standalone section)
+% =========================================================================
+% All cond leadfields live under a single geometry folder (the unshifted
+% original). Keys: bem_cond_<ref>_bundle<B>_shift<S>
+% Files: <bem_cond_path>/geometries_<ref_short>/leadfield_<ref_short>_bem_cond_bundle<B>_shift<S>_<array>.mat
+
+if have_bem_cond
+    fprintf('\n  --- BEM Conductivity Perturbation ---\n');
+    ref_short    = regexprep(cond_sensitivity_ref_key, '^geometries[_-]?', '');
+    cond_subdir  = fullfile(bem_cond_path, ['geometries_' ref_short]);
+    cond_files   = dir(fullfile(cond_subdir, ...
+        ['leadfield_' ref_short '_bem_cond_*.mat']));
+
+    if isempty(cond_files)
+        warning('No BEM-cond files found in: %s', cond_subdir);
+    end
+
+    for cf = 1:numel(cond_files)
+        fname = cond_files(cf).name;
+        tok   = regexp(fname, ...
+            ['leadfield_' ref_short '_bem_cond_(bundle\d+_shift\d+)_(.+)\.mat'], 'tokens');
+        if isempty(tok); continue; end
+        bund_shift = tok{1}{1};   % e.g. 'bundle1_shift1'
+        arr        = tok{1}{2};   % e.g. 'front' or 'back'
+        key        = ['bem_cond_' cond_sensitivity_ref_key '_' bund_shift];
+
+        tmp = load(fullfile(cond_subdir, fname), 'leadfield_cord');
+        if ~isfield(tmp, 'leadfield_cord')
+            warning('Variable leadfield_cord not found in: %s', fname);
+            continue
+        end
+        [leadfields, abs_max_per_source] = organise_leadfield( ...
+            leadfields, abs_max_per_source, tmp.leadfield_cord, ...
+            key, 1e15, orientation_labels);
+        n_loaded = n_loaded + 1;
+        fprintf('    BEM-cond: %s (%s)\n', key, arr);
     end
 end
 
