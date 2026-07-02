@@ -238,10 +238,11 @@ for g = 1:numel(all_geom_names)
         for cf = 1:numel(cond_files)
             fname = cond_files(cf).name;
             tok   = regexp(fname, ...
-                ['leadfield_' geom_short '_bem_cond_(.+)\.mat'], 'tokens');
+                ['leadfield_' geom_short '_bem_cond_(bundle\d+_shift\d+)_(.+)\.mat'], 'tokens');
             if isempty(tok); continue; end
-            suffix = tok{1}{1};   % e.g. 'bundle1_shift1_front'
-            key    = ['bem_cond_' geom_full '_' suffix];
+            bund_shift = tok{1}{1};   % e.g. 'bundle1_shift1'
+            arr        = tok{1}{2};   % e.g. 'front' or 'back'
+            key        = ['bem_cond_' geom_full '_' bund_shift];
 
             tmp = load(fullfile(cond_subdir, fname), 'leadfield_cord');
             if ~isfield(tmp, 'leadfield_cord')
@@ -252,7 +253,7 @@ for g = 1:numel(all_geom_names)
                 leadfields, abs_max_per_source, tmp.leadfield_cord, ...
                 key, 1e15, orientation_labels);
             n_loaded = n_loaded + 1;
-            fprintf('    BEM-cond: %s\n', key);
+            fprintf('    BEM-cond: %s (%s)\n', key, arr);
         end
     end
 

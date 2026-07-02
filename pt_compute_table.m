@@ -33,6 +33,7 @@ clc
 
 run_source = true;
 run_sensor = true;
+run_cond   = true;
 
 config_pert;
 pt_add_functions;
@@ -104,6 +105,40 @@ if run_sensor
             sensor_sensitivity_ref_key, save_dir, prefix, header_lines);
     end
     fprintf('Sensor table complete.\n\n');
+end
+
+%% CONDUCTIVITY TABLE
+
+if run_cond
+    fprintf('CONDUCTIVITY PERTURBATION TABLE\n');
+    cond_file = fullfile(forward_fields_base, 'pert_cond_rsq.mat');
+    if ~isfile(cond_file)
+        error('Cond r² file not found: %s\nRun pt_compute_rsq first.', cond_file);
+    end
+    load(cond_file);
+
+    save_dir = fullfile(save_base_dir, 'perturbation_analysis', 'cond');
+    if ~exist(save_dir, 'dir'); mkdir(save_dir); end
+
+    groups       = cond_bundle_display;
+    group_header = 'Error bundle';
+    group_fn     = @(i) cond_bundle_display{valid_cond_bundle_idx(i)};
+
+    header_lines = {
+        '=== BEM CONDUCTIVITY PERTURBATION — SUMMARY TABLE ===', ...
+        'Tissue conductivities independently increased per compartment', ...
+        '  Bundle 1 — small  (up to +5%):  sigma x (1 + U(0, 0.05)) per compartment', ...
+        '  Bundle 2 — medium (up to +10%): sigma x (1 + U(0, 0.10))', ...
+        '  Bundle 3 — large  (up to +50%): sigma x (1 + U(0, 0.50))', ...
+    };
+
+    method    = 'bem';
+    rsq_store = rsq_by_method.(method);
+    write_table(rsq_store, valid_cond_labels, orientation_labels, orientation_display, ...
+        src_range, src_spacing_mm, n_axes, groups, group_header, group_fn, ...
+        cond_sensitivity_ref_key, save_dir, 'cond_bem', header_lines);
+
+    fprintf('Conductivity table complete.\n\n');
 end
 
 fprintf('pt_compute_table complete.\n');

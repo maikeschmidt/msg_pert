@@ -38,6 +38,7 @@ clc
 
 run_source = true;    % SET THIS: compute source shift r²
 run_sensor = true;    % SET THIS: compute sensor shift r²
+run_cond   = true;    % SET THIS: compute BEM conductivity perturbation r²
 
 % INITIALISE
 
@@ -170,6 +171,61 @@ if run_sensor
             'rsq_by_method', 'loaded_methods', ...
             'valid_keys_geom', 'valid_labels', 'valid_idx', ...
             'valid_bundle_idx', 'valid_shift_idx', ...
+            'n_sources', 'n_axes', 'src_range', 'n_src_plot', ...
+            'distances', 'marker_idx', '-v7.3');
+        fprintf('  Saved: %s\n', outfile);
+    end
+end
+
+%% CONDUCTIVITY MODE
+
+if run_cond
+
+    fprintf('\n BEM CONDUCTIVITY PERTURBATION r² \n');
+
+    % Reference: nominal BEM on the unshifted source geometry
+    ref_key = ['bem_' cond_sensitivity_ref_key];
+
+    if ~isfield(leadfields, ref_key)
+        warning('Conductivity reference not found (%s) — skipping cond mode.', ref_key);
+    else
+        % Build the 24 perturbed keys directly (always bem_cond_ prefix)
+        cond_all_keys    = cell(1, n_cond_total);
+        cond_all_labels  = cell(1, n_cond_total);
+        for b = 1:n_cond_bundles
+            for s = 1:n_cond_shifts
+                idx = (b-1)*n_cond_shifts + s;
+                cond_all_keys{idx}   = sprintf('bem_cond_%s_bundle%d_shift%d', ...
+                    cond_sensitivity_ref_key, b, s);
+                cond_all_labels{idx} = sprintf('Bundle %d  Shift %d', b, s);
+            end
+        end
+
+        % Validate which keys loaded successfully
+        valid_mask            = cellfun(@(k) isfield(leadfields, k), cond_all_keys);
+        valid_cond_keys       = cond_all_keys(valid_mask);
+        valid_cond_labels     = cond_all_labels(valid_mask);
+        valid_cond_bundle_idx = cond_bundle_idx(valid_mask);
+        valid_cond_shift_idx  = cond_shift_idx(valid_mask);
+
+        fprintf('  Reference: %s  |  %d valid perturbations\n', ...
+            ref_key, numel(valid_cond_keys));
+
+        [n_sources, n_axes, src_range, n_src_plot, distances, marker_idx] = ...
+            get_dimensions(leadfields, ref_key, orientation_labels, src_spacing_mm);
+
+        min_sensors = get_min_sensors(leadfields, ref_key, valid_cond_keys, orientation_labels);
+
+        rsq_by_method  = struct();
+        loaded_methods = {'bem'};
+        rsq_by_method.bem = compute_rsq(leadfields, ref_key, valid_cond_keys, ...
+            orientation_labels, src_range, n_axes, min_sensors);
+
+        outfile = fullfile(forward_fields_base, 'pert_cond_rsq.mat');
+        save(outfile, ...
+            'rsq_by_method', 'loaded_methods', ...
+            'valid_cond_keys', 'valid_cond_labels', 'valid_mask', ...
+            'valid_cond_bundle_idx', 'valid_cond_shift_idx', ...
             'n_sources', 'n_axes', 'src_range', 'n_src_plot', ...
             'distances', 'marker_idx', '-v7.3');
         fprintf('  Saved: %s\n', outfile);
