@@ -82,8 +82,8 @@ pt_add_functions;
 have_bem      = true;    % BEM via Helsinki BEM Framework
 have_fem      = false;   % FEM via DUNEuro
 have_bslaw    = true;    % Biot-Savart (infinite homogeneous space)
-have_sphere   = true;    % Single sphere (Sarvas analytical solution)
-have_bem_cond = false;   % BEM with perturbed tissue conductivities (run_conductivity_perturbation)
+have_sphere   = false;    % Single sphere (Sarvas analytical solution)
+have_bem_cond = true;   % BEM with perturbed tissue conductivities (run_conductivity_perturbation)
 
 % Output paths for each method.
 % BEM and FEM: files are in per-geometry subfolders under the base path.
@@ -93,8 +93,8 @@ have_bem_cond = false;   % BEM with perturbed tissue conductivities (run_conduct
 bem_path      = 'D:\Simulations\Pertubations\fields\bem';
 fem_path      = forward_fields_base;
 bslaw_path    = 'D:\Simulations\Pertubations\fields\bs_law';
-sphere_path   = 'D:\Simulations\Pertubations\fields\single_sphere';
-bem_cond_path = 'D:\Simulations\Pertubations\fields\bem_cond';   % SET THIS: from run_conductivity_perturbation
+sphere_path   = '';
+bem_cond_path = 'D:\Simulations\Pertubations\fields\bem_cond_msg';   % SET THIS: from run_conductivity_perturbation
 
 
 % =========================================================================
