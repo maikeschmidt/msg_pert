@@ -88,8 +88,8 @@
 % USER CONFIGURATION — set these paths before running any script
 % =========================================================================
 
-geoms_path           = 'D:\Simulations\Pertubations\geoms_elec';   % SET THIS: path to original geometry .mat file
-perturbed_geoms_path = 'D:\Simulations\Pertubations\geoms_elec';   % SET THIS: output path for perturbed geometry files
+geoms_path           = 'D:\Simulations\Pertubations\geoms';   % SET THIS: path to original geometry .mat file
+perturbed_geoms_path = 'D:\Simulations\Pertubations\geoms';   % SET THIS: output path for perturbed geometry files
 forward_fields_base  = 'D:\Simulations\Pertubations\fields';       % SET THIS: path to leadfield .mat files (from msg_fwd)
 save_base_dir        = 'D:\Simulations\Pertubations\results';      % SET THIS: base path for figures and tables
 
@@ -301,8 +301,8 @@ cond_bundle_colors = [
 %   'bem'    — Boundary Element Method
 %   'fem'    — Finite Element Method
 
-fwd_methods       = {'bslaw', 'sphere', 'bem'};   % SET THIS: methods to compare
-fwd_method_labels = {'Biot-Savart', 'Single sphere', 'BEM'};   % SET THIS
+fwd_methods       = {'bslaw', 'bem'};   % SET THIS: methods to compare
+fwd_method_labels = {'Biot-Savart', 'BEM'};   % SET THIS
 
 fwd_method_colors = [
     0.80, 0.15, 0.10;   % bslaw  — red

@@ -10,3 +10,5 @@ pt_load_leadfields.m
 
 # ── macOS ─────────────────────────────────────────────────────────────────────
 .DS_Store
+config_pert.m
+config_pert.asv
