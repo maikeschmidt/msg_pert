@@ -55,6 +55,7 @@ clc
 
 run_source = true;
 run_sensor = true;
+run_cond   = true;
 
 config_pert;
 pt_add_functions;
@@ -478,6 +479,97 @@ if run_sensor
 
     end
     fprintf('Sensor heatmaps complete.\n\n');
+end
+
+%% =========================================================================
+%% CONDUCTIVITY HEATMAPS (BEM only — within-method)
+%% =========================================================================
+
+if run_cond
+    fprintf('CONDUCTIVITY HEATMAPS\n');
+
+    cond_file = fullfile(forward_fields_base, 'pert_cond_rsq.mat');
+    if ~isfile(cond_file)
+        error('Cond r² file not found: %s\nRun pt_compute_rsq first.', cond_file);
+    end
+    load(cond_file);   %#ok<LOAD>
+
+    save_dir = fullfile(save_base_dir, 'perturbation_analysis', 'cond');
+    if ~exist(save_dir, 'dir'); mkdir(save_dir); end
+
+    n_cond_valid = numel(valid_cond_keys);
+    if n_cond_valid == 0
+        warning('No conductivity perturbation keys found — skipping cond heatmaps.');
+    else
+
+    % Short labels: 'B1S1' ... 'B3S8'
+    cond_shift_short = cell(1, n_cond_valid);
+    for i = 1:n_cond_valid
+        cond_shift_short{i} = sprintf('B%dS%d', ...
+            valid_cond_bundle_idx(i), valid_cond_shift_idx(i));
+    end
+
+    % Separator positions: after orig (1), after bundle 1, after bundle 2
+    n_cb1 = sum(valid_cond_bundle_idx == 1);
+    n_cb2 = sum(valid_cond_bundle_idx == 2);
+    cond_within_seps = [1, 1+n_cb1, 1+n_cb1+n_cb2];
+
+    % BEM reference key
+    ref_key = ['bem_' cond_sensitivity_ref_key];
+
+    if ~isfield(leadfields, ref_key)
+        warning('BEM reference not found (%s) — skipping cond heatmaps.', ref_key);
+    else
+
+    fprintf('  Conductivity within-method heatmaps (BEM)...\n');
+
+    item_keys   = [ref_key, valid_cond_keys];
+    item_labels = [{'orig'}, cond_shift_short];
+    n_items     = numel(item_keys);
+    item_ok     = cellfun(@(k) isfield(leadfields, k), item_keys);
+
+    for sens_ax = 1:n_axes
+        min_s = get_min_sensors_lf(leadfields, item_keys(item_ok), ...
+            orientation_labels{1}, sens_ax);
+
+        [re_cell, cc_cell] = compute_pairwise_per_ori( ...
+            leadfields, item_keys, item_ok, orientation_labels, ...
+            sens_ax, src_range, min_s);
+
+        fig_w = max(1200, n_items * 30 * n_ori + 300);
+        fig_h = max(700,  n_items * 30 * 2 + 200);
+        fig = figure('Color', 'w', 'Position', [50, 50, fig_w, fig_h]);
+        tl  = tiledlayout(2, n_ori, 'TileSpacing', 'compact', 'Padding', 'normal');
+        title(tl, sprintf('[BEM]  Conductivity perturbation — within-method pairwise  |  Sensor axis %d of %d', ...
+            sens_ax, n_axes), 'FontSize', 13, 'FontWeight', 'bold');
+
+        for ori_idx = 1:n_ori
+            ori  = orientation_labels{ori_idx};
+            odsp = orientation_display{ori_idx};
+
+            hax = nexttile(tl, ori_idx);
+            draw_heatmap(hax, re_cell.(ori) * 100, item_labels, ...
+                [odsp '  —  RE (%)'], cool, ...
+                [0, max_nonnan(re_cell.(ori)) * 100], 'RE (%)', ...
+                cond_within_seps, '%.1f');
+
+            hax = nexttile(tl, n_ori + ori_idx);
+            draw_heatmap(hax, cc_cell.(ori) * 100, item_labels, ...
+                [odsp '  —  r² (%)'], flipud(cool), ...
+                [min_nonnan(cc_cell.(ori)) * 100, 100], 'r² (%)', ...
+                cond_within_seps, '%.1f');
+        end
+
+        fname = sprintf('cond_within_bem_sensorax%d', sens_ax);
+        exportgraphics(fig, fullfile(save_dir, [fname '.png']), 'Resolution', 300);
+        saveas(fig, fullfile(save_dir, [fname '.fig']));
+        close(fig);
+        fprintf('    Saved: %s\n', fname);
+    end
+
+    end   % ref_key exists
+    end   % n_cond_valid > 0
+    fprintf('Conductivity heatmaps complete.\n\n');
 end
 
 fprintf('pt_plot_heatmaps complete.\n');
