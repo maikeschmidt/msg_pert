@@ -90,11 +90,11 @@ have_bem_cond = true;   % BEM with perturbed tissue conductivities (run_conducti
 % Biot-Savart and sphere: files are in a flat folder (no subfolders).
 % Defaults to forward_fields_base — override if you stored outputs elsewhere.
 
-bem_path      = 'D:\Simulations\Pertubations\fields\bem';
+bem_path      = 'D:\Simulations\Pertubations\fields\bem_elec';
 fem_path      = forward_fields_base;
-bslaw_path    = 'D:\Simulations\Pertubations\fields\bs_law';
+bslaw_path    = '';
 sphere_path   = '';
-bem_cond_path = 'D:\Simulations\Pertubations\fields\bem_cond_msg';   % SET THIS: from run_conductivity_perturbation
+bem_cond_path = 'D:\Simulations\Pertubations\fields\bem_cond_esg';   % SET THIS: from run_conductivity_perturbation
 
 
 % =========================================================================
