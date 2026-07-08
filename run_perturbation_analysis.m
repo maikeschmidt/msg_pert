@@ -204,6 +204,26 @@ else
     fprintf('[7/7] Skipping pt_compute_table — no r² files found.\n\n');
 end
 
+% =========================================================================
+% STEP 8 (OPTIONAL): Cross-perturbation and cross-modality comparison
+% =========================================================================
+% Configure msg_results_path (and optionally esg_results_path) inside
+% pt_compare_perturbations.m before running the full pipeline.
+
+if have_any_rsq
+    fprintf('[8/?] Cross-perturbation / MSG vs ESG comparison...\n');
+    fprintf('      (configure paths in pt_compare_perturbations.m)\n');
+    try
+        run('pt_compare_perturbations.m');
+        fprintf('[8/?] Complete.\n\n');
+    catch err
+        fprintf('WARNING: pt_compare_perturbations failed:\n  %s\n', err.message);
+        fprintf('Continuing...\n\n');
+    end
+else
+    fprintf('[8/?] Skipping pt_compare_perturbations — no r² files found.\n\n');
+end
+
 fprintf('=========================================\n');
 fprintf('  Perturbation analysis pipeline complete.\n');
 fprintf('  Figures saved to: %s\n', fullfile(save_base_dir, 'perturbation_analysis'));
