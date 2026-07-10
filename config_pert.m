@@ -88,10 +88,10 @@
 % USER CONFIGURATION — set these paths before running any script
 % =========================================================================
 
-geoms_path           = 'D:\Simulations\Pertubations\geoms_elec';   % SET THIS: path to original geometry .mat file
-perturbed_geoms_path = 'D:\Simulations\Pertubations\geoms_elec';   % SET THIS: output path for perturbed geometry files
-forward_fields_base  = 'D:\Simulations\Pertubations\fields';       % SET THIS: path to leadfield .mat files (from msg_fwd)
-save_base_dir        = 'D:\Simulations\Pertubations\results\elec';      % SET THIS: base path for figures and tables
+geoms_path           = 'D:\Simulations\Pertubations\geometries';   % SET THIS: path to original geometry .mat file
+perturbed_geoms_path = 'D:\Simulations\Pertubations\geometries';   % SET THIS: output path for perturbed geometry files
+forward_fields_base  = 'D:\Simulations\Pertubations\fields\mag';       % SET THIS: path to leadfield .mat files (from msg_fwd)
+save_base_dir        = 'D:\Simulations\Pertubations\results';      % SET THIS: base path for figures and tables
 
 base_geom_name       = 'original';   % SET THIS: short stem used in file names,
                              %   WITHOUT the leading 'geometries_' prefix.
@@ -303,8 +303,8 @@ cond_bundle_colors = [
 %   'bem'    — Boundary Element Method
 %   'fem'    — Finite Element Method
 
-fwd_methods       = { 'bem'};   % SET THIS: methods to compare
-fwd_method_labels = {'BEM'};   % SET THIS
+fwd_methods       = {'bslaw', 'bem'};   % SET THIS: methods to compare
+fwd_method_labels = {'Biot-Savart','BEM'};   % SET THIS
 
 fwd_method_colors = [
     0.80, 0.15, 0.10;   % bslaw  — red
