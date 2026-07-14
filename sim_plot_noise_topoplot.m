@@ -64,10 +64,11 @@ n_ori = numel(sim_orientations);
 w_peak      = sim_waveform(t_peak);
 
 % Noise s.d. at the configured level (see sim_simulate_noise for the derivation).
-% This must include the sqrt(n_trials) reduction from trial averaging, or the
-% topoplot would show single-trial noise while the r-squared curves describe
-% trial-averaged data — the two figures would silently disagree.
-bandwidth  = sim_fs / 2;
+% This must reproduce sim_simulate_noise's calculation exactly — per-system
+% bandwidth AND the sqrt(n_trials) trial-averaging gain — or the topoplot would
+% depict different noise from the one the r-squared curves describe, and the two
+% figures would silently disagree.
+nyquist    = sim_fs / 2;
 trial_gain = sqrt(sim_n_trials);
 
 fprintf('sim_plot_noise_topoplot\n');
@@ -95,6 +96,7 @@ for k = 1:n_sys
                src_idx, lf.n_sources, md.label, sim_focus_src_mm, src_spacing_mm);
     end
 
+    bandwidth = min(sim_systems(k).bandwidth_hz, nyquist);
     sigma = sim_systems(k).noise_baseline * sim_focus_noise_factor ...
             * sqrt(bandwidth) / trial_gain;
 

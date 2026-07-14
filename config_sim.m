@@ -231,10 +231,31 @@ sim_models(3).axis_slot  = [1 3];
 % it isolates the effect of sensor noise from the effect of geometry.
 %
 % Set .model to the index of the forward model each system measures.
+%
+% .bandwidth_hz — the system's measurement bandwidth (upper cutoff, Hz).
+%   This is NOT a cosmetic detail. Total noise POWER scales with bandwidth, so
+%   the time-domain noise s.d. is
+%       sigma = noise_density * sqrt(bandwidth)
+%   A system that only measures out to 150 Hz therefore admits sqrt(500/150)
+%   = 1.8x less noise than one measuring out to 500 Hz, at the same noise
+%   density. Ignoring bandwidth would systematically penalise the narrow-band
+%   systems.
+%
+%   The EFFECTIVE bandwidth is min(.bandwidth_hz, sim_fs/2): a system cannot
+%   measure above the Nyquist frequency of the simulation's sampling rate. With
+%   sim_fs = 1000 Hz, Nyquist is 500 Hz, so SQUID's 1 kHz spec is clipped to
+%   500 Hz here. Raise sim_fs if you want its full bandwidth represented.
+%
+%   Set .bandwidth_hz = Inf to mean "whatever Nyquist allows".
+%
+% CAVEAT: the bandwidth is applied to the NOISE only. The 90 Hz evoked burst
+% sits inside every system's passband, so a real anti-alias filter would leave
+% the signal essentially untouched — but this does mean the simulation does not
+% model any signal attenuation near a system's cutoff.
 
 sim_systems = struct('label', {}, 'short', {}, 'model', {}, ...
                      'noise_baseline', {}, 'noise_unit', {}, ...
-                     'noise_unit_txt', {}, 'color', {});
+                     'noise_unit_txt', {}, 'bandwidth_hz', {}, 'color', {});
 
 sim_systems(1).label          = 'SQUID MSG';
 sim_systems(1).short          = 'squid_msg';
@@ -242,6 +263,7 @@ sim_systems(1).model          = 2;      % MSG BEM
 sim_systems(1).noise_baseline = 5;      % fT/sqrt(Hz)  (2-5 typical)
 sim_systems(1).noise_unit     = 'fT/\surdHz';
 sim_systems(1).noise_unit_txt = 'fT/sqrt(Hz)';
+sim_systems(1).bandwidth_hz   = 1000;   % up to 1 kHz (clipped to Nyquist)
 sim_systems(1).color          = [0.10, 0.30, 0.80];
 
 sim_systems(2).label          = 'OP-MSG';
@@ -250,6 +272,7 @@ sim_systems(2).model          = 2;      % MSG BEM
 sim_systems(2).noise_baseline = 20;     % fT/sqrt(Hz)  (7-20 typical)
 sim_systems(2).noise_unit     = 'fT/\surdHz';
 sim_systems(2).noise_unit_txt = 'fT/sqrt(Hz)';
+sim_systems(2).bandwidth_hz   = 150;    % OPM dynamic range rolls off ~150 Hz
 sim_systems(2).color          = [0.10, 0.60, 0.20];
 
 sim_systems(3).label          = 'ESG';
@@ -258,6 +281,8 @@ sim_systems(3).model          = 3;      % ESG BEM
 sim_systems(3).noise_baseline = 1;      % uV/sqrt(Hz)  (amplifier-noise estimate)
 sim_systems(3).noise_unit     = '\muV/\surdHz';
 sim_systems(3).noise_unit_txt = 'uV/sqrt(Hz)';
+sim_systems(3).bandwidth_hz   = Inf;    % EEG amps (e.g. Brain Products): 1 kHz
+                                        % or Nyquist, whichever is lower
 sim_systems(3).color          = [0.80, 0.15, 0.10];
 
 
@@ -304,25 +329,27 @@ sim_waveform = sim_dipole_nAm ...
 %
 %   sigma_eff = sigma_single_trial / sqrt(sim_n_trials)
 %
-% 2000 trials therefore buys a sqrt(2000) ~ 44.7x reduction in noise.
+% 8000 trials therefore buys a sqrt(8000) ~ 89.4x reduction in noise.
 %
 % NOTE: the simulation applies this analytically rather than generating and
-% averaging 2000 separate noisy datasets. For independent Gaussian noise the
+% averaging sim_n_trials separate noisy datasets. For independent Gaussian noise the
 % two are exactly equivalent — the average of n iid N(0, sigma^2) draws is
 % distributed as N(0, sigma^2/n) — so this is an identity, not an
-% approximation, and it avoids 2000x the computation for the same answer.
+% approximation, and it avoids sim_n_trials-fold computation for the same answer.
 
-sim_n_trials = 2000;   % SET THIS: trials averaged per condition
+sim_n_trials = 8000;   % SET THIS: trials averaged per condition
+                       % (8000 -> sqrt(8000) = 89.4x noise reduction)
 
 
 % =========================================================================
 % NOISE SWEEP
 % =========================================================================
-% Each system's noise floor is a spectral density (units/sqrt(Hz)). Broadband
-% white noise sampled at sim_fs occupies a bandwidth of sim_fs/2, so the
-% SINGLE-TRIAL time-domain standard deviation is:
+% Each system's noise floor is a spectral density (units/sqrt(Hz)). The noise
+% power a system actually admits depends on ITS OWN measurement bandwidth
+% (sim_systems(k).bandwidth_hz), capped at the simulation's Nyquist frequency:
 %
-%   sigma = density * sqrt(sim_fs/2)
+%   bw_eff = min(bandwidth_hz, sim_fs/2)
+%   sigma  = density * sqrt(bw_eff)         (single trial)
 %
 % and after averaging sim_n_trials trials:
 %

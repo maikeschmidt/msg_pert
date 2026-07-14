@@ -34,9 +34,10 @@
 %
 % NOISE MODEL:
 %   Each system's noise floor is a white spectral density (units/sqrt(Hz)).
-%   Broadband white noise sampled at sim_fs occupies a bandwidth of sim_fs/2,
-%   so the time-domain standard deviation is
-%       sigma = density * sqrt(sim_fs / 2)
+%   Each system admits noise over its own measurement bandwidth, capped at the
+%   simulation's Nyquist frequency (a system cannot measure above sim_fs/2):
+%       bw_eff = min(system bandwidth_hz, sim_fs/2)
+%       sigma  = density * sqrt(bw_eff)
 %   No band-pass filter is applied around the 90 Hz signal. Narrow-band
 %   filtering would shrink the noise by sqrt(bandwidth ratio) and inflate every
 %   r-squared value, so leaving it broadband keeps this a conservative bound
@@ -156,34 +157,50 @@ end
 % =========================================================================
 % sigma = spectral density * sqrt(bandwidth), bandwidth = Nyquist = fs/2
 
-bandwidth = sim_fs / 2;
+% Each system admits noise over ITS OWN measurement bandwidth, capped at the
+% simulation's Nyquist frequency — a system cannot measure above fs/2.
+% Total noise power scales with bandwidth, so sigma = density * sqrt(bw_eff).
+% This is why OP-MSG is not simply 4x worse than SQUID despite a 4x higher
+% noise density: its 150 Hz ceiling admits sqrt(500/150) = 1.8x less noise.
+nyquist = sim_fs / 2;
+bw_eff  = zeros(1, n_sys);
+for k = 1:n_sys
+    bw_eff(k) = min(sim_systems(k).bandwidth_hz, nyquist);
+end
 
 % Averaging sim_n_trials independent trials leaves the time-locked evoked
 % signal untouched and shrinks the noise s.d. by sqrt(n) — an exact property of
 % independent Gaussian noise, so it is applied analytically rather than by
-% simulating 2000 datasets and averaging them.
+% generating and averaging that many datasets.
 trial_gain = sqrt(sim_n_trials);
 
 sigma_single = zeros(n_sys, n_lev);   % per-trial noise s.d.
 sigma_abs    = zeros(n_sys, n_lev);   % after averaging — what the sim actually uses
 
-fprintf('  Noise floors (time-domain s.d. over %.0f Hz bandwidth):\n', bandwidth);
+fprintf('  Nyquist limit: %.0f Hz (sim_fs = %d Hz)\n', nyquist, sim_fs);
 fprintf('  Averaging %d trials reduces the noise by sqrt(%d) = %.1fx\n\n', ...
     sim_n_trials, sim_n_trials, trial_gain);
-fprintf('    %-10s %-10s %-14s %-14s\n', ...
-    'System', 'baseline', 'sigma 1x (1 trl)', 'sigma 1x (avg)');
+fprintf('    %-10s %-16s %-10s %-16s %-16s\n', ...
+    'System', 'baseline', 'bw (Hz)', 'sigma 1x (1 trl)', 'sigma 1x (avg)');
+
+base_col = find(sim_noise_factors == 1, 1);
 for k = 1:n_sys
     sigma_single(k, :) = sim_systems(k).noise_baseline * sim_noise_factors ...
-                         * sqrt(bandwidth);
+                         * sqrt(bw_eff(k));
     sigma_abs(k, :)    = sigma_single(k, :) / trial_gain;
 
-    base_col = find(sim_noise_factors == 1, 1);
-    fprintf('    %-10s %6.2f %-4s %-14.4g %-14.4g\n', ...
+    if isfinite(sim_systems(k).bandwidth_hz) && sim_systems(k).bandwidth_hz > nyquist
+        bw_note = sprintf('%.0f*', bw_eff(k));   % * = clipped to Nyquist
+    else
+        bw_note = sprintf('%.0f',  bw_eff(k));
+    end
+
+    fprintf('    %-10s %6.2f %-9s %-10s %-16.4g %-16.4g\n', ...
         sim_systems(k).label, sim_systems(k).noise_baseline, ...
-        sim_systems(k).noise_unit_txt, ...
+        sim_systems(k).noise_unit_txt, bw_note, ...
         sigma_single(k, base_col), sigma_abs(k, base_col));
 end
-fprintf('\n');
+fprintf('    (* = system spec exceeds Nyquist; clipped to %.0f Hz)\n\n', nyquist);
 
 
 % =========================================================================
@@ -312,7 +329,7 @@ sys_baseline = [sim_systems.noise_baseline];
 sys_units    = {sim_systems.noise_unit};
 
 outfile = fullfile(sim_out_dir, 'sim_noise_rsq.mat');
-save(outfile, 'rsq_mean', 'rsq_sd', 'snr', 'sigma_abs', 'sigma_single', ...
+save(outfile, 'rsq_mean', 'rsq_sd', 'snr', 'sigma_abs', 'sigma_single', 'bw_eff', ...
     'sim_noise_factors', 'sim_n_realisations', 'sim_noise_seed', ...
     'sim_orientations', 'sim_ori_display', 'sim_array', ...
     'sim_n_trials', 'sim_evoked_latency', 'sim_evoked_sigma', 'sim_waveform', ...
