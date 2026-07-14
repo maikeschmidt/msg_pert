@@ -52,7 +52,10 @@
 %     .short          - Filename-safe stem
 %     .model          - Index into sim_models: which forward model it measures
 %     .noise_baseline - White noise floor, in units/sqrt(Hz)
-%     .noise_unit     - Display string for the noise floor
+%     .noise_unit     - Unit string for FIGURE text (TeX: renders \surd as a
+%                       radical). Do NOT fprintf this — the console prints the
+%                       raw escape, e.g. "fT/\surdHz".
+%     .noise_unit_txt - Plain-ASCII unit string for console output.
 %     .color          - [1x3] RGB
 %
 %   Signal:
@@ -230,13 +233,15 @@ sim_models(3).axis_slot  = [1 3];
 % Set .model to the index of the forward model each system measures.
 
 sim_systems = struct('label', {}, 'short', {}, 'model', {}, ...
-                     'noise_baseline', {}, 'noise_unit', {}, 'color', {});
+                     'noise_baseline', {}, 'noise_unit', {}, ...
+                     'noise_unit_txt', {}, 'color', {});
 
 sim_systems(1).label          = 'SQUID MSG';
 sim_systems(1).short          = 'squid_msg';
 sim_systems(1).model          = 2;      % MSG BEM
 sim_systems(1).noise_baseline = 5;      % fT/sqrt(Hz)  (2-5 typical)
 sim_systems(1).noise_unit     = 'fT/\surdHz';
+sim_systems(1).noise_unit_txt = 'fT/sqrt(Hz)';
 sim_systems(1).color          = [0.10, 0.30, 0.80];
 
 sim_systems(2).label          = 'OP-MSG';
@@ -244,6 +249,7 @@ sim_systems(2).short          = 'op_msg';
 sim_systems(2).model          = 2;      % MSG BEM
 sim_systems(2).noise_baseline = 20;     % fT/sqrt(Hz)  (7-20 typical)
 sim_systems(2).noise_unit     = 'fT/\surdHz';
+sim_systems(2).noise_unit_txt = 'fT/sqrt(Hz)';
 sim_systems(2).color          = [0.10, 0.60, 0.20];
 
 sim_systems(3).label          = 'ESG';
@@ -251,6 +257,7 @@ sim_systems(3).short          = 'esg';
 sim_systems(3).model          = 3;      % ESG BEM
 sim_systems(3).noise_baseline = 1;      % uV/sqrt(Hz)  (amplifier-noise estimate)
 sim_systems(3).noise_unit     = '\muV/\surdHz';
+sim_systems(3).noise_unit_txt = 'uV/sqrt(Hz)';
 sim_systems(3).color          = [0.80, 0.15, 0.10];
 
 

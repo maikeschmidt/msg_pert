@@ -146,9 +146,9 @@ fprintf('  Noise floors (time-domain s.d. over %.0f Hz bandwidth):\n', bandwidth
 for k = 1:n_sys
     sigma_abs(k, :) = sim_systems(k).noise_baseline * sim_noise_factors ...
                       * sqrt(bandwidth);
-    fprintf('    %-10s baseline %6.2f %s  ->  sigma at 1x = %8.2f\n', ...
+    fprintf('    %-10s baseline %6.2f %-12s ->  sigma at 1x = %8.2f\n', ...
         sim_systems(k).label, sim_systems(k).noise_baseline, ...
-        sim_systems(k).noise_unit, sigma_abs(k, sim_noise_factors == 1));
+        sim_systems(k).noise_unit_txt, sigma_abs(k, sim_noise_factors == 1));
 end
 fprintf('\n');
 
@@ -296,14 +296,26 @@ fprintf('Saved: %s\n', outfile);
 
 base_L = find(sim_noise_factors == 1, 1);
 if ~isempty(base_L)
-    fprintf('\n  Mean r^2 across the whole cord, at each system''s baseline noise:\n');
+    fprintf('\n  At each system''s baseline noise, across the whole cord:\n');
+    fprintf('    %-16s %-12s %-10s %-10s\n', ...
+        'Orientation', 'System', 'mean r^2', 'med. SNR');
     for o = 1:n_ori
-        fprintf('    %-16s', sim_ori_display{o});
         for k = 1:n_sys
-            fprintf('  %-10s %.3f', sim_systems(k).label, ...
-                mean(squeeze(rsq_mean(k, o, :, base_L)), 'omitnan'));
+            fprintf('    %-16s %-12s %-10.3f %-10.3g\n', ...
+                sim_ori_display{o}, sim_systems(k).label, ...
+                mean(squeeze(rsq_mean(k, o, :, base_L)), 'omitnan'), ...
+                median(squeeze(snr(k, o, :, base_L)), 'omitnan'));
         end
-        fprintf('\n');
+    end
+
+    % A leadfield left on the wrong unit scale is the usual cause of a
+    % saturated r^2: inflate the signal enough and the noise stops mattering,
+    % so every system reads 1.000 at every level and the sweep says nothing.
+    if all(rsq_mean(:, :, :, base_L) > 0.999, 'all')
+        warning(['Every r^2 at baseline is >0.999 — the signal is swamping the ' ...
+                 'noise at every system and orientation. This is the signature ' ...
+                 'of a leadfield unit-scale error (see bem_patched in config_sim); ' ...
+                 'check the median SNR above is physically plausible.']);
     end
 end
 
