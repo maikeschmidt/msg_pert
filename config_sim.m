@@ -262,16 +262,57 @@ sim_systems(3).color          = [0.80, 0.15, 0.10];
 
 
 % =========================================================================
-% SIGNAL PARAMETERS
+% SIGNAL PARAMETERS — evoked response
 % =========================================================================
+% Mimics an evoked potential/field: a brief oscillatory burst at a fixed
+% latency after stimulus onset, repeated over many trials and averaged.
+%
+% The source is a Gaussian-windowed sinusoid peaking at sim_evoked_latency.
+% A windowed burst (rather than a sinusoid running for the whole epoch) is what
+% makes this an EVOKED response: the signal is confined to a short post-stimulus
+% window, and the pre- and post-burst samples carry noise only — which is
+% exactly the regime a real evoked recording is scored in.
 
-sim_fs         = 1000;   % sampling rate (Hz)
-sim_duration   = 1.0;    % epoch length (s)
-sim_freq       = 90;     % source oscillation frequency (Hz)
-sim_dipole_nAm = 1;      % source strength (nA*m)
+sim_fs             = 1000;    % sampling rate (Hz)
+sim_duration       = 0.100;   % epoch length (s) — 100 ms post-stimulus
+sim_freq           = 90;      % carrier frequency of the burst (Hz)
+sim_dipole_nAm     = 1;       % PEAK source strength (nA*m)
 
-sim_time       = (0 : 1/sim_fs : sim_duration - 1/sim_fs);
-sim_waveform   = sim_dipole_nAm * sin(2*pi*sim_freq*sim_time);   % [1 x n_time]
+sim_evoked_latency = 0.025;   % s — burst peaks 25 ms after trial start
+sim_evoked_sigma   = 0.005;   % s — Gaussian envelope s.d. (~2 cycles at 90 Hz)
+
+sim_time = (0 : 1/sim_fs : sim_duration - 1/sim_fs);
+
+% Gaussian-windowed sine burst, peak amplitude sim_dipole_nAm at the latency
+sim_envelope = exp(-((sim_time - sim_evoked_latency).^2) ...
+                   / (2 * sim_evoked_sigma^2));
+sim_waveform = sim_dipole_nAm ...
+             * sin(2*pi*sim_freq*(sim_time - sim_evoked_latency)) ...
+             .* sim_envelope;                                  % [1 x n_time]
+
+
+% =========================================================================
+% TRIAL AVERAGING
+% =========================================================================
+% A single 1 nA*m trial is far below every system's noise floor — r-squared
+% comes out at essentially zero, which is physically correct and is precisely
+% why real evoked recordings average over many trials.
+%
+% Averaging n independent trials leaves the (time-locked) evoked signal
+% unchanged while reducing the standard deviation of the (independent) noise by
+% sqrt(n). So the trial-averaged data has an effective noise level of
+%
+%   sigma_eff = sigma_single_trial / sqrt(sim_n_trials)
+%
+% 2000 trials therefore buys a sqrt(2000) ~ 44.7x reduction in noise.
+%
+% NOTE: the simulation applies this analytically rather than generating and
+% averaging 2000 separate noisy datasets. For independent Gaussian noise the
+% two are exactly equivalent — the average of n iid N(0, sigma^2) draws is
+% distributed as N(0, sigma^2/n) — so this is an identity, not an
+% approximation, and it avoids 2000x the computation for the same answer.
+
+sim_n_trials = 2000;   % SET THIS: trials averaged per condition
 
 
 % =========================================================================
@@ -279,9 +320,13 @@ sim_waveform   = sim_dipole_nAm * sin(2*pi*sim_freq*sim_time);   % [1 x n_time]
 % =========================================================================
 % Each system's noise floor is a spectral density (units/sqrt(Hz)). Broadband
 % white noise sampled at sim_fs occupies a bandwidth of sim_fs/2, so the
-% time-domain standard deviation is:
+% SINGLE-TRIAL time-domain standard deviation is:
 %
 %   sigma = density * sqrt(sim_fs/2)
+%
+% and after averaging sim_n_trials trials:
+%
+%   sigma_eff = sigma / sqrt(sim_n_trials)
 %
 % No band-pass filter is applied. Filtering to a narrow band around sim_freq
 % would shrink the noise by sqrt(bandwidth_ratio) and inflate every r-squared

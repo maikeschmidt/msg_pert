@@ -2,13 +2,25 @@
 %                      against the perfect (noise-free) forward field
 %
 % Steps 2-4 of the realistic-measurement analysis:
-%   2. Simulate a 1 nA*m, 90 Hz sinusoidal source at EVERY source point on the
-%      cord, projected through the perfect forward model.
-%   3. Add white sensor noise for three real systems (SQUID MSG, OP-MSG, ESG),
-%      sweeping each system's noise floor up and down by the same multiplicative
-%      steps around its published baseline.
-%   4. Score the noisy data against the noise-free data with r-squared, per
-%      source point and per noise level.
+%   2. Simulate an EVOKED response — a 1 nA*m, 90 Hz Gaussian-windowed burst
+%      peaking 25 ms after trial onset — at EVERY source point on the cord,
+%      projected through the perfect forward model, and averaged over
+%      sim_n_trials trials.
+%   3. Add Gaussian white sensor noise for three real systems (SQUID MSG,
+%      OP-MSG, ESG), sweeping each system's noise floor up and down by the same
+%      multiplicative steps around its published baseline.
+%   4. Score the noisy trial-averaged data against the noise-free data with
+%      r-squared, per source point and per noise level.
+%
+% TRIAL AVERAGING:
+%   A SINGLE 1 nA*m trial sits far below every system's noise floor in a 500 Hz
+%   band — r-squared comes out at essentially zero. That is not a bug; it is why
+%   evoked recordings average over many trials. Averaging n independent trials
+%   preserves the time-locked signal and divides the noise s.d. by sqrt(n), so
+%   the effective noise here is sigma/sqrt(sim_n_trials). This is applied
+%   analytically: for independent Gaussian noise the mean of n draws is exactly
+%   N(0, sigma^2/n), so simulating 2000 datasets and averaging them would give
+%   the same distribution at 2000x the cost.
 %
 % USAGE:
 %   sim_simulate_noise
@@ -67,8 +79,13 @@ config_sim;
 pt_add_functions;
 
 fprintf('sim_simulate_noise\n');
-fprintf('  Source:  %.1f nA*m, %.0f Hz sine, %.2f s @ %d Hz\n', ...
-    sim_dipole_nAm, sim_freq, sim_duration, sim_fs);
+fprintf('  Source:  evoked burst, %.1f nA*m peak, %.0f Hz carrier\n', ...
+    sim_dipole_nAm, sim_freq);
+fprintf('           peaking at %.0f ms (envelope s.d. %.0f ms)\n', ...
+    sim_evoked_latency*1000, sim_evoked_sigma*1000);
+fprintf('  Epoch:   %.0f ms @ %d Hz  (%d samples)\n', ...
+    sim_duration*1000, sim_fs, numel(sim_time));
+fprintf('  Trials:  %d (averaged)\n', sim_n_trials);
 fprintf('  Array:   %s\n', sim_array);
 fprintf('  Levels:  %s (x baseline)\n', mat2str(sim_noise_factors));
 fprintf('  Realisations per level: %d\n\n', sim_n_realisations);
@@ -140,15 +157,31 @@ end
 % sigma = spectral density * sqrt(bandwidth), bandwidth = Nyquist = fs/2
 
 bandwidth = sim_fs / 2;
-sigma_abs = zeros(n_sys, n_lev);   % time-domain s.d., in each system's own units
+
+% Averaging sim_n_trials independent trials leaves the time-locked evoked
+% signal untouched and shrinks the noise s.d. by sqrt(n) — an exact property of
+% independent Gaussian noise, so it is applied analytically rather than by
+% simulating 2000 datasets and averaging them.
+trial_gain = sqrt(sim_n_trials);
+
+sigma_single = zeros(n_sys, n_lev);   % per-trial noise s.d.
+sigma_abs    = zeros(n_sys, n_lev);   % after averaging — what the sim actually uses
 
 fprintf('  Noise floors (time-domain s.d. over %.0f Hz bandwidth):\n', bandwidth);
+fprintf('  Averaging %d trials reduces the noise by sqrt(%d) = %.1fx\n\n', ...
+    sim_n_trials, sim_n_trials, trial_gain);
+fprintf('    %-10s %-10s %-14s %-14s\n', ...
+    'System', 'baseline', 'sigma 1x (1 trl)', 'sigma 1x (avg)');
 for k = 1:n_sys
-    sigma_abs(k, :) = sim_systems(k).noise_baseline * sim_noise_factors ...
-                      * sqrt(bandwidth);
-    fprintf('    %-10s baseline %6.2f %-12s ->  sigma at 1x = %8.2f\n', ...
+    sigma_single(k, :) = sim_systems(k).noise_baseline * sim_noise_factors ...
+                         * sqrt(bandwidth);
+    sigma_abs(k, :)    = sigma_single(k, :) / trial_gain;
+
+    base_col = find(sim_noise_factors == 1, 1);
+    fprintf('    %-10s %6.2f %-4s %-14.4g %-14.4g\n', ...
         sim_systems(k).label, sim_systems(k).noise_baseline, ...
-        sim_systems(k).noise_unit_txt, sigma_abs(k, sim_noise_factors == 1));
+        sim_systems(k).noise_unit_txt, ...
+        sigma_single(k, base_col), sigma_abs(k, base_col));
 end
 fprintf('\n');
 
@@ -279,9 +312,10 @@ sys_baseline = [sim_systems.noise_baseline];
 sys_units    = {sim_systems.noise_unit};
 
 outfile = fullfile(sim_out_dir, 'sim_noise_rsq.mat');
-save(outfile, 'rsq_mean', 'rsq_sd', 'snr', 'sigma_abs', ...
+save(outfile, 'rsq_mean', 'rsq_sd', 'snr', 'sigma_abs', 'sigma_single', ...
     'sim_noise_factors', 'sim_n_realisations', 'sim_noise_seed', ...
     'sim_orientations', 'sim_ori_display', 'sim_array', ...
+    'sim_n_trials', 'sim_evoked_latency', 'sim_evoked_sigma', 'sim_waveform', ...
     'sim_fs', 'sim_freq', 'sim_duration', 'sim_dipole_nAm', ...
     'src_mm', 'n_src', 'src_spacing_mm', ...
     'sys_labels', 'sys_shorts', 'sys_colors', 'sys_baseline', 'sys_units', ...
