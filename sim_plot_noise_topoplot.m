@@ -82,7 +82,7 @@ for k = 1:n_sys
     fprintf('  %s (%s)\n', sim_systems(k).label, md.label);
 
     lf  = sim_load_leadfield(md.(sim_array), md.var, md.scale, md.is_meg);
-    pos = sim_sensor_positions(md.geom_file, sim_array, md.is_meg);
+    pos = sim_sensor_positions(md.geom_file, sim_array, md.is_meg, lf.n_sensor_axes);
 
     src_idx = round(sim_focus_src_mm / src_spacing_mm) + 1;
     if src_idx > lf.n_sources
