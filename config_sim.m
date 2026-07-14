@@ -131,7 +131,7 @@ esg_scale = 1e6;   % SET THIS: 1e6 if ESG leadfields are in V/nAm, 1 if already 
 
 sim_models = struct('label', {}, 'short', {}, 'front', {}, 'back', {}, ...
                     'var', {}, 'scale', {}, 'is_meg', {}, 'geom_file', {}, ...
-                    'axis_names', {});
+                    'n_axes', {}, 'axis_names', {});
 
 % --- Model 1: MSG, Biot-Savart (infinite homogeneous space — smooth fields)
 sim_models(1).label     = 'MSG — Biot-Savart';
@@ -145,6 +145,7 @@ sim_models(1).scale     = 1;
 sim_models(1).is_meg    = true;
 sim_models(1).geom_file = fullfile(msg_geoms_path, ...
     ['geometries_' msg_geom_short '.mat']);
+sim_models(1).n_axes     = 3;
 sim_models(1).axis_names = {'X-axis', 'Y-axis', 'Z-axis'};
 
 % --- Model 2: MSG, BEM (individualised anatomy — sharp fields)
@@ -159,6 +160,7 @@ sim_models(2).scale     = 1e15;
 sim_models(2).is_meg    = true;
 sim_models(2).geom_file = fullfile(msg_geoms_path, ...
     ['geometries_' msg_geom_short '.mat']);
+sim_models(2).n_axes     = 3;
 sim_models(2).axis_names = {'X-axis', 'Y-axis', 'Z-axis'};
 
 % --- Model 3: ESG, BEM (surface potentials — smooth fields)
@@ -173,8 +175,12 @@ sim_models(3).scale     = esg_scale;
 sim_models(3).is_meg    = false;
 sim_models(3).geom_file = fullfile(esg_geoms_path, ...
     ['geometries_' esg_geom_short '.mat']);
-% ESG electrodes are not a Cartesian triad — SET THIS to match the channel
-% order your ESG leadfield was built in.
+% ESG electrodes are not a Cartesian triad: two electrode sets, tangential and
+% radial. n_axes MUST be stated — the ESG channel count (e.g. 342 = 2 x 171)
+% can be divisible by 3, so any code that guesses the axis count from
+% divisibility will wrongly read it as 3 x 114 and mis-slice the leadfield.
+% SET axis_names to match the channel order your ESG leadfield was built in.
+sim_models(3).n_axes     = 2;
 sim_models(3).axis_names = {'Tangential', 'Radial'};
 
 

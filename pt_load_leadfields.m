@@ -85,6 +85,36 @@ have_bslaw    = true;    % Biot-Savart (infinite homogeneous space)
 have_sphere   = false;    % Single sphere (Sarvas analytical solution)
 have_bem_cond = true;   % BEM with perturbed tissue conductivities (run_conductivity_perturbation)
 
+% -------------------------------------------------------------------------
+% SENSOR MODALITY — must be declared, not inferred
+% -------------------------------------------------------------------------
+% One msg_pert run covers ONE modality (MSG and ESG leadfields live in separate
+% folders), so state which one this run is loading.
+%
+%   MSG (triaxial magnetometer array):  sensor_n_axes = 3, sensor_is_meg = true
+%   ESG (tangential/radial electrodes): sensor_n_axes = 2, sensor_is_meg = false
+%
+% These used to be guessed inside organise_leadfield: the axis count from
+% whether the channel count divided by 3, and is_meg was hardcoded true. Both
+% guesses break on ESG. An array of 342 electrodes is 2 axes x 171, but 342 also
+% divides by 3, so it was read as 3 axes x 114 — slicing every leadfield at the
+% wrong boundaries and blending tangential and radial channels into fake "axes",
+% with no error raised. Declaring it removes the guess.
+
+sensor_n_axes = 3;      % SET THIS: 3 = MSG (triaxial), 2 = ESG (tangential/radial)
+sensor_is_meg = true;   % SET THIS: true = MSG, false = ESG
+
+% BEM raw output is T/nAm for MSG and V/nAm for ESG, so the scale to the
+% reporting unit differs by modality:
+%   MSG: 1e15  (T/nAm  -> fT/nAm)
+%   ESG: 1e6   (V/nAm  -> uV/nAm)
+% If your ESG pipeline already saved microvolts, set this to 1.
+if sensor_is_meg
+    bem_unit_scale = 1e15;
+else
+    bem_unit_scale = 1e6;
+end
+
 % Output paths for each method.
 % BEM and FEM: files are in per-geometry subfolders under the base path.
 % Biot-Savart and sphere: files are in a flat folder (no subfolders).
@@ -155,7 +185,8 @@ for g = 1:numel(all_geom_names)
             end
             [leadfields, abs_max_per_source] = organise_leadfield( ...
                 leadfields, abs_max_per_source, tmp.leadfield_cord, ...
-                key, 1e15, orientation_labels);
+                key, bem_unit_scale, orientation_labels, ...
+                sensor_n_axes, sensor_is_meg);
             n_loaded = n_loaded + 1;
             fprintf('    BEM: %s (%s)\n', key, arr);
         end
@@ -187,7 +218,8 @@ for g = 1:numel(all_geom_names)
             end
             [leadfields, abs_max_per_source] = organise_leadfield( ...
                 leadfields, abs_max_per_source, tmp.leadfield_ft, ...
-                key, 1, orientation_labels);
+                key, 1, orientation_labels, ...
+                sensor_n_axes, sensor_is_meg);
             n_loaded = n_loaded + 1;
             fprintf('    FEM: %s (%s)\n', key, arr);
         end
@@ -218,7 +250,8 @@ for g = 1:numel(all_geom_names)
             end
             [leadfields, abs_max_per_source] = organise_leadfield( ...
                 leadfields, abs_max_per_source, tmp.leadfield_bs, ...
-                key, 1, orientation_labels);
+                key, 1, orientation_labels, ...
+                sensor_n_axes, sensor_is_meg);
             n_loaded = n_loaded + 1;
             fprintf('    BS:  %s (%s)\n', key, arr);
         end
@@ -249,7 +282,8 @@ for g = 1:numel(all_geom_names)
             end
             [leadfields, abs_max_per_source] = organise_leadfield( ...
                 leadfields, abs_max_per_source, tmp.leadfield_sphere, ...
-                key, 1, orientation_labels);
+                key, 1, orientation_labels, ...
+                sensor_n_axes, sensor_is_meg);
             n_loaded = n_loaded + 1;
             fprintf('    Sp:  %s (%s)\n', key, arr);
         end
@@ -290,7 +324,8 @@ if have_bem_cond
         end
         [leadfields, abs_max_per_source] = organise_leadfield( ...
             leadfields, abs_max_per_source, tmp.leadfield_cord, ...
-            key, 1e15, orientation_labels);
+            key, bem_unit_scale, orientation_labels, ...
+            sensor_n_axes, sensor_is_meg);
         n_loaded = n_loaded + 1;
         fprintf('    BEM-cond: %s (%s)\n', key, arr);
     end
