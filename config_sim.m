@@ -131,11 +131,34 @@ if ~exist(sim_out_dir,  'dir'); mkdir(sim_out_dir);  end
 %   BS law: <root>/leadfield_geometries_<short>_bslaw_<array>.mat
 %           variable leadfield_bs     | scale 1 (already fT/nAm)
 %
-% ESG BEM files are assumed to follow the BEM convention but hold potentials
-% in volts, so scale 1e6 converts V/nAm -> uV/nAm. If your ESG pipeline
-% already saved microvolts, set esg_scale = 1 instead.
+% UNIT SCALES — depend on whether the ft_prepare_leadfield dipoleunit patch
+% is active in your FieldTrip.
+%
+% run_bem_leadfields sets cfg.dipoleunit = 'nA*m', but that option only takes
+% effect with a patched ft_prepare_leadfield (see the note at
+% run_sphere_leadfields.m:325). UNPATCHED, FieldTrip returns the leadfield per
+% AMPERE-metre, not per nanoampere-metre — a factor of 1e9 larger than intended.
+%
+%   Patched   (per nA*m):  BEM MSG x 1e15 (T->fT),   BEM ESG x 1e6  (V->uV)
+%   Unpatched (per A*m):   BEM MSG x 1e6,            BEM ESG x 1e-3
+%                          (i.e. the patched value x 1e-9)
+%
+% Symptom of getting this wrong: BEM peaks come out ~1e9 too large, and BEM
+% disagrees wildly with Biot-Savart even though msg_fwd shows the two agreeing
+% closely for MSG. Biot-Savart is immune because run_biot_savart_leadfields
+% computes its own fT/nAm scale directly and never goes through FieldTrip.
+%
+% The amplitude diagnostic printed by sim_plot_topoplots checks this for you.
 
-esg_scale = 1e6;   % SET THIS: 1e6 if ESG leadfields are in V/nAm, 1 if already uV/nAm
+bem_patched = false;   % SET THIS: true if your ft_prepare_leadfield honours cfg.dipoleunit
+
+if bem_patched
+    msg_bem_scale = 1e15;   % T/nAm -> fT/nAm
+    esg_scale     = 1e6;    % V/nAm -> uV/nAm
+else
+    msg_bem_scale = 1e6;    % T/(A*m) -> fT/nAm
+    esg_scale     = 1e-3;   % V/(A*m) -> uV/nAm
+end
 
 sim_models = struct('label', {}, 'short', {}, 'front', {}, 'back', {}, ...
                     'var', {}, 'scale', {}, 'is_meg', {}, 'geom_file', {}, ...
@@ -165,7 +188,7 @@ sim_models(2).front     = fullfile(msg_bem_root, ['geometries_' msg_geom_short],
 sim_models(2).back      = fullfile(msg_bem_root, ['geometries_' msg_geom_short], ...
     sprintf('leadfield_%s_bem_back.mat',  msg_geom_short));
 sim_models(2).var       = 'leadfield_cord';
-sim_models(2).scale     = 1e15;
+sim_models(2).scale     = msg_bem_scale;
 sim_models(2).is_meg    = true;
 sim_models(2).geom_file = fullfile(msg_geoms_path, ...
     ['geometries_' msg_geom_short '.mat']);

@@ -108,10 +108,11 @@ fprintf('\n');
 % 1e9, 1e15) the unit scale in config_sim is wrong for that model, not the
 % physics.
 %
-% Expected scales, matching msg_fwd/load_and_organise_leadfields:
-%   BEM MSG     x 1e15   (T/nAm  -> fT/nAm)
-%   Biot-Savart x 1      (run_biot_savart_leadfields already writes fT/nAm)
-%   BEM ESG     x 1e6    (V/nAm  -> uV/nAm)
+% Expected scales depend on whether the FieldTrip dipoleunit patch is active
+% (see bem_patched in config_sim):
+%   Patched   — BEM MSG x 1e15,  BEM ESG x 1e6
+%   Unpatched — BEM MSG x 1e6,   BEM ESG x 1e-3   (leadfield is per A*m, not nA*m)
+%   Biot-Savart x 1 either way (it writes fT/nAm directly, bypassing FieldTrip)
 
 fprintf('  Peak |leadfield| at source %d (compare with msg_fwd absmax figures):\n', src_idx);
 for m = 1:n_models
