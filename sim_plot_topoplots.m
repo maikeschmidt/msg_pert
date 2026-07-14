@@ -99,31 +99,95 @@ fprintf('\n');
 
 
 % =========================================================================
-% ONE FIGURE PER ARRAY PER SENSOR AXIS
+% AMPLITUDE DIAGNOSTIC
 % =========================================================================
-% Sensor axis count is taken as the maximum across models (3 for MSG). Models
-% with fewer axes get an explicit placeholder panel on the extra figures.
+% Peak |leadfield| at this source, per model. Cross-check these against the
+% peak-amplitude figures from msg_fwd (plot_absmax_curves / plot_sm_absmax):
+% the two MSG models should land in the same ballpark, since Biot-Savart and
+% BEM agree closely for MSG. If they differ by a round factor here (1e3, 1e6,
+% 1e9, 1e15) the unit scale in config_sim is wrong for that model, not the
+% physics.
 %
-% IMPORTANT: the axis INDEX is not a shared quantity across models. MSG axis 2
-% is the Y component of the magnetic field; ESG axis 2 is the radial electrode
-% set. They are different physical measurements that merely happen to occupy
-% the same slot in the channel ordering. So each row is labelled with that
-% model's OWN axis name (sim_models(m).axis_names) and the figure title refers
-% only to the slot number — the reader is never invited to read across a row as
-% though the two were the same measurement.
+% Expected scales, matching msg_fwd/load_and_organise_leadfields:
+%   BEM MSG     x 1e15   (T/nAm  -> fT/nAm)
+%   Biot-Savart x 1      (run_biot_savart_leadfields already writes fT/nAm)
+%   BEM ESG     x 1e6    (V/nAm  -> uV/nAm)
 
-max_axes = max(cellfun(@(l) l.n_sensor_axes, lf_all(:)));
+fprintf('  Peak |leadfield| at source %d (compare with msg_fwd absmax figures):\n', src_idx);
+for m = 1:n_models
+    if sim_models(m).is_meg
+        unit_txt = 'fT/nAm';
+    else
+        unit_txt = 'uV/nAm';
+    end
+    fprintf('    %-20s scale x%-8g ', sim_models(m).label, sim_models(m).scale);
+    for a = 1:numel(arrays)
+        lf = lf_all{m, a};
+        pk = 0;
+        for ax = 1:lf.n_sensor_axes
+            for ori = 1:n_ori
+                pk = max(pk, max(abs(lf.(sim_orientations{ori}){ax, src_idx})));
+            end
+        end
+        fprintf('%s: %9.3g %s   ', arrays{a}, pk, unit_txt);
+    end
+    fprintf('\n');
+end
 
-% Each model must name every axis its leadfield actually has, or a panel would
-% be drawn with no idea what it is showing.
+% The two MSG models should agree to within a factor of a few. A round-number
+% ratio is the signature of a unit-scale error.
+msg_idx = find([sim_models.is_meg]);
+if numel(msg_idx) == 2
+    pk = zeros(1, 2);
+    for i = 1:2
+        lf = lf_all{msg_idx(i), 2};   % back array
+        for ax = 1:lf.n_sensor_axes
+            for ori = 1:n_ori
+                pk(i) = max(pk(i), max(abs(lf.(sim_orientations{ori}){ax, src_idx})));
+            end
+        end
+    end
+    ratio = pk(1) / pk(2);
+    fprintf('    MSG %s / %s peak ratio = %.4g\n', ...
+        sim_models(msg_idx(1)).label, sim_models(msg_idx(2)).label, ratio);
+    if ratio > 20 || ratio < 0.05
+        warning(['The two MSG models differ by %.4g x. msg_fwd shows Biot-Savart ' ...
+                 'and BEM agreeing closely for MSG, so a ratio this large points ' ...
+                 'to a unit-scale mismatch in config_sim (check .scale on each ' ...
+                 'model against msg_fwd/load_and_organise_leadfields).'], ratio);
+    end
+end
+fprintf('\n');
+
+
+% =========================================================================
+% ONE FIGURE PER ARRAY PER COMPARISON SLOT
+% =========================================================================
+% Figures are organised by SLOT, not by raw axis index, because the axis index
+% is not a shared quantity across models. Slots follow the MSG convention
+% (1 = X, 2 = Y, 3 = Z); each model declares which slot each of its own axes
+% belongs in via .axis_slot.
+%
+% For ESG that mapping is:  tangential -> slot 1 (X),  radial -> slot 3 (Z).
+% Note this is NOT the ESG channel order — radial is ESG's SECOND axis but
+% belongs in the THIRD slot. Indexing by raw axis number would have put ESG
+% radial next to MSG Y, comparing two unrelated measurements. ESG has no
+% counterpart to MSG Y, so the slot-2 figure shows a placeholder for its row.
+
+slot_names = {'X-axis', 'Y-axis', 'Z-axis'};
+n_slots    = numel(slot_names);
+
+% Every axis a model actually has must be named and assigned to a slot.
 for m = 1:n_models
     for a = 1:numel(arrays)
-        if numel(sim_models(m).axis_names) < lf_all{m, a}.n_sensor_axes
+        n_ax_m = lf_all{m, a}.n_sensor_axes;
+        if numel(sim_models(m).axis_names) < n_ax_m || ...
+           numel(sim_models(m).axis_slot)  < n_ax_m
             error(['Model "%s" has %d sensor axes in its %s leadfield but only ' ...
-                   '%d entries in .axis_names.\nSet sim_models(%d).axis_names in ' ...
-                   'config_sim.m to name every axis.'], ...
-                   sim_models(m).label, lf_all{m, a}.n_sensor_axes, arrays{a}, ...
-                   numel(sim_models(m).axis_names), m);
+                   '%d axis_names and %d axis_slot entries.\nSet both in ' ...
+                   'config_sim.m so every axis is named and placed.'], ...
+                   sim_models(m).label, n_ax_m, arrays{a}, ...
+                   numel(sim_models(m).axis_names), numel(sim_models(m).axis_slot), m);
         end
     end
 end
@@ -131,7 +195,7 @@ end
 for a = 1:numel(arrays)
     arr = arrays{a};
 
-    for ax = 1:max_axes
+    for slot = 1:n_slots
 
         fig = figure('Color', 'w', 'Units', 'inches', ...
             'Position', [1, 1, 3*n_ori + 1.5, 2.8*n_models]);
@@ -142,13 +206,16 @@ for a = 1:numel(arrays)
             lf  = lf_all{m, a};
             pos = pos_all{m, a};
 
-            % ── Model has no such sensor axis (ESG has only 2) ────────────
-            if ax > lf.n_sensor_axes
+            % Which of THIS model's axes (if any) sits in this slot?
+            ax = find(sim_models(m).axis_slot(1:lf.n_sensor_axes) == slot, 1);
+
+            % ── Model has no axis in this slot (ESG in the Y slot) ────────
+            if isempty(ax)
                 for ori = 1:n_ori
                     nexttile(tl, (m-1)*n_ori + ori);
-                    text(0.5, 0.5, sprintf('%s\nhas only %d sensor axes (%s)', ...
-                        sim_models(m).label, lf.n_sensor_axes, ...
-                        strjoin(sim_models(m).axis_names(1:lf.n_sensor_axes), ', ')), ...
+                    text(0.5, 0.5, sprintf('%s\nhas no %s equivalent\n(%s only)', ...
+                        sim_models(m).label, slot_names{slot}, ...
+                        strjoin(sim_models(m).axis_names(1:lf.n_sensor_axes), ' + ')), ...
                         'HorizontalAlignment', 'center', ...
                         'VerticalAlignment', 'middle', ...
                         'FontSize', 10, 'Color', [0.45 0.45 0.45], ...
@@ -198,19 +265,16 @@ for a = 1:numel(arrays)
             end
         end
 
-        % The title names the axis SLOT, not a physical axis — each row states
-        % what that slot means for its own model.
-        title(tl, sprintf(['Perfect forward field  |  %s array  |  sensor axis %d  |  ' ...
+        title(tl, sprintf(['Perfect forward field  |  %s array  |  %s  |  ' ...
                            'source %.0f mm along cord'], ...
-                arr, ax, sim_topo_src_mm), ...
+                arr, slot_names{slot}, sim_topo_src_mm), ...
             'FontSize', 13, 'FontWeight', 'bold');
-        subtitle(tl, ['each row is labelled with that model''s own axis; ' ...
-                      'MSG axes are field components, ESG axes are electrode sets ' ...
-                      '— not the same quantity. Colour limits shared within a row.'], ...
+        subtitle(tl, ['MSG X/Y/Z are field components; ESG tangential aligns with X ' ...
+                      'and radial with Z. Colour limits shared within a row.'], ...
             'FontSize', 9, 'Color', [0.4 0.4 0.4]);
 
-        fname = sprintf('perfect_topoplot_%s_sensorax%d_src%03dmm', ...
-            arr, ax, round(sim_topo_src_mm));
+        fname = sprintf('perfect_topoplot_%s_%s_src%03dmm', ...
+            arr, lower(strrep(slot_names{slot}, '-', '')), round(sim_topo_src_mm));
         exportgraphics(fig, fullfile(save_dir, [fname '.png']), 'Resolution', 600);
         saveas(fig, fullfile(save_dir, [fname '.fig']));
         close(fig);

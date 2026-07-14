@@ -35,9 +35,17 @@
 %     .geom_file  - Full path to the geometry .mat holding sensor positions
 %     .axis_names - Display name of each sensor axis, in leadfield channel
 %                   order. MSG is triaxial (X/Y/Z field components); ESG has
-%                   two electrode sets (tangential and radial). These are NOT
-%                   the same quantity, so each model carries its own names and
-%                   they are never implicitly paired across models.
+%                   two electrode sets (tangential and radial).
+%     .axis_slot  - Which COMPARISON SLOT each of this model's axes belongs in.
+%                   The topoplot figures are organised one-per-slot, so this is
+%                   what decides which ESG panel sits underneath which MSG panel.
+%                   Slots follow the MSG triaxial convention:
+%                     slot 1 = X   slot 2 = Y   slot 3 = Z
+%                   ESG measures potentials, not field components, but its two
+%                   electrode sets correspond to MSG axes:
+%                     tangential -> slot 1 (X),  radial -> slot 3 (Z)
+%                   so ESG is axis_slot = [1 3] — it has no slot-2 panel, and
+%                   the slot-2 figure shows a placeholder for the ESG row.
 %
 %   Sensor systems (sim_systems struct array) — one entry per real system:
 %     .label          - Display name, e.g. 'SQUID MSG'
@@ -131,7 +139,7 @@ esg_scale = 1e6;   % SET THIS: 1e6 if ESG leadfields are in V/nAm, 1 if already 
 
 sim_models = struct('label', {}, 'short', {}, 'front', {}, 'back', {}, ...
                     'var', {}, 'scale', {}, 'is_meg', {}, 'geom_file', {}, ...
-                    'n_axes', {}, 'axis_names', {});
+                    'n_axes', {}, 'axis_names', {}, 'axis_slot', {});
 
 % --- Model 1: MSG, Biot-Savart (infinite homogeneous space — smooth fields)
 sim_models(1).label     = 'MSG — Biot-Savart';
@@ -147,6 +155,7 @@ sim_models(1).geom_file = fullfile(msg_geoms_path, ...
     ['geometries_' msg_geom_short '.mat']);
 sim_models(1).n_axes     = 3;
 sim_models(1).axis_names = {'X-axis', 'Y-axis', 'Z-axis'};
+sim_models(1).axis_slot  = [1 2 3];
 
 % --- Model 2: MSG, BEM (individualised anatomy — sharp fields)
 sim_models(2).label     = 'MSG — BEM';
@@ -162,6 +171,7 @@ sim_models(2).geom_file = fullfile(msg_geoms_path, ...
     ['geometries_' msg_geom_short '.mat']);
 sim_models(2).n_axes     = 3;
 sim_models(2).axis_names = {'X-axis', 'Y-axis', 'Z-axis'};
+sim_models(2).axis_slot  = [1 2 3];
 
 % --- Model 3: ESG, BEM (surface potentials — smooth fields)
 sim_models(3).label     = 'ESG — BEM';
@@ -182,6 +192,9 @@ sim_models(3).geom_file = fullfile(esg_geoms_path, ...
 % SET axis_names to match the channel order your ESG leadfield was built in.
 sim_models(3).n_axes     = 2;
 sim_models(3).axis_names = {'Tangential', 'Radial'};
+% ESG tangential lines up with the MSG X-axis, ESG radial with the MSG Z-axis.
+% There is no ESG counterpart to the MSG Y-axis, so slot 2 has no ESG panel.
+sim_models(3).axis_slot  = [1 3];
 
 
 % =========================================================================
