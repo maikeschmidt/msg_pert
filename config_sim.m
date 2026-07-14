@@ -33,6 +33,11 @@
 %     .scale      - Unit scale factor applied on load
 %     .is_meg     - true = magnetic (fT/nAm), false = electric (uV/nAm)
 %     .geom_file  - Full path to the geometry .mat holding sensor positions
+%     .axis_names - Display name of each sensor axis, in leadfield channel
+%                   order. MSG is triaxial (X/Y/Z field components); ESG has
+%                   two electrode sets (tangential and radial). These are NOT
+%                   the same quantity, so each model carries its own names and
+%                   they are never implicitly paired across models.
 %
 %   Sensor systems (sim_systems struct array) — one entry per real system:
 %     .label          - Display name, e.g. 'SQUID MSG'
@@ -125,7 +130,8 @@ if ~exist(sim_out_dir,  'dir'); mkdir(sim_out_dir);  end
 esg_scale = 1e6;   % SET THIS: 1e6 if ESG leadfields are in V/nAm, 1 if already uV/nAm
 
 sim_models = struct('label', {}, 'short', {}, 'front', {}, 'back', {}, ...
-                    'var', {}, 'scale', {}, 'is_meg', {}, 'geom_file', {});
+                    'var', {}, 'scale', {}, 'is_meg', {}, 'geom_file', {}, ...
+                    'axis_names', {});
 
 % --- Model 1: MSG, Biot-Savart (infinite homogeneous space — smooth fields)
 sim_models(1).label     = 'MSG — Biot-Savart';
@@ -139,6 +145,7 @@ sim_models(1).scale     = 1;
 sim_models(1).is_meg    = true;
 sim_models(1).geom_file = fullfile(msg_geoms_path, ...
     ['geometries_' msg_geom_short '.mat']);
+sim_models(1).axis_names = {'X-axis', 'Y-axis', 'Z-axis'};
 
 % --- Model 2: MSG, BEM (individualised anatomy — sharp fields)
 sim_models(2).label     = 'MSG — BEM';
@@ -152,6 +159,7 @@ sim_models(2).scale     = 1e15;
 sim_models(2).is_meg    = true;
 sim_models(2).geom_file = fullfile(msg_geoms_path, ...
     ['geometries_' msg_geom_short '.mat']);
+sim_models(2).axis_names = {'X-axis', 'Y-axis', 'Z-axis'};
 
 % --- Model 3: ESG, BEM (surface potentials — smooth fields)
 sim_models(3).label     = 'ESG — BEM';
@@ -165,6 +173,9 @@ sim_models(3).scale     = esg_scale;
 sim_models(3).is_meg    = false;
 sim_models(3).geom_file = fullfile(esg_geoms_path, ...
     ['geometries_' esg_geom_short '.mat']);
+% ESG electrodes are not a Cartesian triad — SET THIS to match the channel
+% order your ESG leadfield was built in.
+sim_models(3).axis_names = {'Tangential', 'Radial'};
 
 
 % =========================================================================
