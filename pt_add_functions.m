@@ -27,6 +27,12 @@ root = pert_path();
 addpath(root);
 fprintf('msg_pert root added to path: %s\n', root);
 
+% msg_pert helper functions (sim_load_leadfield, sim_sensor_positions, ...)
+pert_fns = fullfile(root, 'functions');
+if isfolder(pert_fns)
+    addpath(pert_fns);
+end
+
 % Check SPM
 if isempty(which('spm'))
     warning('pt_add_functions: SPM not found on path. Add SPM before running scripts.');
