@@ -91,15 +91,15 @@
 % MSG and ESG geometries live in separate folders. If yours happen to share a
 % folder, just set both to the same path.
 msg_geoms_path = 'D:\Simulations\Pertubations\geometries';        % SET THIS
-esg_geoms_path = 'D:\Simulations\Pertubations\geometries_esg';    % SET THIS
+esg_geoms_path = 'D:\Simulations\Pertubations\geoms_elec';    % SET THIS
 
 sim_save_dir   = 'D:\Simulations\Pertubations\results\simulation';% SET THIS
 sim_out_dir    = 'D:\Simulations\Pertubations\fields\simulation'; % SET THIS
 
 % Roots of the three leadfield sets (perfect / unperturbed forward fields)
-msg_bem_root   = 'D:\Simulations\Pertubations\fields\bem';        % SET THIS
-msg_bslaw_root = 'D:\Simulations\Pertubations\fields\bs_law';     % SET THIS
-esg_bem_root   = 'D:\Simulations\Pertubations\fields\esg_bem';    % SET THIS
+msg_bem_root   = 'D:\Simulations\Pertubations\fields\mag\bem';        % SET THIS
+msg_bslaw_root = 'D:\Simulations\Pertubations\fields\mag\bs_law';     % SET THIS
+esg_bem_root   = 'D:\Simulations\Pertubations\fields\elec\bem_elec';    % SET THIS
 
 % Geometry stems (WITHOUT the leading 'geometries_' prefix)
 msg_geom_short = 'original_source_original';   % SET THIS
@@ -247,7 +247,7 @@ src_spacing_mm  = 5;     % mm between adjacent sources along the cord
 
 sim_topo_src_mm = 275;   % SET THIS: cord distance (mm) for the topoplot figures
 sim_focus_src_mm = 275;  % SET THIS: cord distance (mm) for the single-source r-sq curve
-sim_focus_noise_factor = 1;   % SET THIS: noise level for the noisy topoplot (x baseline)
+sim_focus_noise_factor = 8;   % SET THIS: noise level for the noisy topoplot (x baseline)
 
 
 % =========================================================================
