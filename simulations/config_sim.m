@@ -181,12 +181,24 @@ else
     esg_scale     = 1e-3;   % V/(A*m) -> uV/nAm
 end
 
+% CONDUCTIVITY leadfields need a DIFFERENT scale than the standard BEM ones.
+% run_bem_leadfields saves the raw leadfield, but run_conductivity_perturbation
+% bakes an extra *1e15 into the file it saves (and labels it 'fT/nAm') for BOTH
+% modalities. So a cond file is 1e15x larger than the matching standard file;
+% loading it with the standard scale makes the signal ~1e15 too big, the noise
+% negligible, and every cond r^2 curve pins flat at 1.
+%
+% The correction is therefore cond_scale = standard_scale / 1e15. If you
+% regenerate the cond leadfields WITHOUT that bake (i.e. matching
+% run_bem_leadfields), set cond_extra_scale = 1 so cond and standard agree.
+cond_extra_scale = 1e15;   % SET TO 1 if run_conductivity_perturbation no longer bakes *1e15
+
 % Models are now defined by COMPONENTS (root, method, scale, ...) rather than
 % fixed file paths, so the same model can be loaded for ANY geometry stem. The
 % actual .mat path is built at load time by sim_lf_path(model, short, array),
 % and the geometry .mat (sensor positions) by sim_geom_file(model, short).
 sim_models = struct('label', {}, 'id', {}, 'method', {}, 'root', {}, ...
-                    'cond_root', {}, 'geoms_path', {}, 'var', {}, 'scale', {}, ...
+                    'cond_root', {}, 'cond_scale', {}, 'geoms_path', {}, 'var', {}, 'scale', {}, ...
                     'is_meg', {}, 'n_axes', {}, 'axis_names', {}, 'axis_slot', {});
 
 % --- Model 1: MSG, Biot-Savart (infinite homogeneous space — smooth fields)
@@ -195,6 +207,7 @@ sim_models(1).id         = 'msg_bslaw';
 sim_models(1).method     = 'bslaw';       % flat folder, leadfield_geometries_<short>_bslaw_<array>.mat
 sim_models(1).root       = msg_bslaw_root;
 sim_models(1).cond_root  = '';            % Biot-Savart has no conductivity variant
+sim_models(1).cond_scale = [];           % (unused)
 sim_models(1).geoms_path = msg_geoms_path;
 sim_models(1).var        = 'leadfield_bs';
 sim_models(1).scale      = 1;
@@ -209,6 +222,7 @@ sim_models(2).id         = 'msg_bem';
 sim_models(2).method     = 'bem';         % <root>/geometries_<short>/leadfield_<short>_bem_<array>.mat
 sim_models(2).root       = msg_bem_root;
 sim_models(2).cond_root  = msg_cond_root;
+sim_models(2).cond_scale = msg_bem_scale / cond_extra_scale;   % cond files carry an extra *1e15
 sim_models(2).geoms_path = msg_geoms_path;
 sim_models(2).var        = 'leadfield_cord';
 sim_models(2).scale      = msg_bem_scale;
@@ -223,6 +237,7 @@ sim_models(3).id         = 'esg_bem';
 sim_models(3).method     = 'bem';
 sim_models(3).root       = esg_bem_root;
 sim_models(3).cond_root  = esg_cond_root;
+sim_models(3).cond_scale = esg_scale / cond_extra_scale;       % cond files carry an extra *1e15
 sim_models(3).geoms_path = esg_geoms_path;
 sim_models(3).var        = 'leadfield_cord';
 sim_models(3).scale      = esg_scale;

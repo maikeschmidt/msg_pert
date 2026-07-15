@@ -99,7 +99,12 @@ for k = 1:n_sys
         fprintf('    no leadfield for %s (%s) — skipped\n', geo.name, geo.kind);
         continue
     end
-    lf  = sim_load_leadfield(lf_path, md.var, md.scale, md.is_meg, md.n_axes);
+    if strcmp(geo.kind, 'cond')
+        load_scale = md.cond_scale;
+    else
+        load_scale = md.scale;
+    end
+    lf  = sim_load_leadfield(lf_path, md.var, load_scale, md.is_meg, md.n_axes);
     pos = sim_sensor_positions(sim_geom_file(md, geo), sim_array, md.is_meg, lf.n_sensor_axes);
 
     src_idx = round(sim_focus_src_mm / src_spacing_mm) + 1;
