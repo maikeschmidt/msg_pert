@@ -360,7 +360,15 @@ sim_n_trials = 8000;   % SET THIS: trials averaged per condition
 % value; leaving the noise broadband keeps this a conservative, honest
 % worst-case and avoids baking a filter choice into the result.
 
-sim_noise_factors  = [0.125, 0.25, 0.5, 1, 2, 4, 8];   % x baseline
+% IMPORTANT — the sweep must span the range where noise actually bites.
+% Trial averaging divides the effective noise by sqrt(sim_n_trials), so at 1x
+% baseline the averaged noise is baseline/sqrt(sim_n_trials). To see r^2 fall
+% from ~1 to ~0 the factors therefore have to reach ~sqrt(sim_n_trials):
+% for 8000 trials that is ~89. A sweep that stops at 8x leaves the noise
+% negligible and every curve comes out flat near 1 (this is the usual cause of
+% "the noise isn't being added" — it is, it is just too small over the range).
+% Rule of thumb: make max(sim_noise_factors) a few times sqrt(sim_n_trials).
+sim_noise_factors  = [1, 3, 10, 30, 100, 300, 1000];   % x baseline (log-spaced)
 sim_n_realisations = 20;
 sim_noise_seed     = 2026;
 

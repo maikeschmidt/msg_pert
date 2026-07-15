@@ -269,6 +269,39 @@ end
 n_src_out = results.(pert_names{1}).n_src;
 src_mm    = (0:n_src_out-1) * src_spacing_mm;
 
+
+% -------------------------------------------------------------------------
+% DIAGNOSTIC — is the noise actually biting?
+% -------------------------------------------------------------------------
+% Prints cord+bundle-mean r^2 (vs perfect) at the LOWEST and HIGHEST noise
+% level. If these two are nearly equal the curve is flat: the sweep does not
+% span the range where noise matters. With trial averaging the effective noise
+% is baseline/sqrt(sim_n_trials), so to see r^2 transition the noise factors
+% must reach roughly sqrt(sim_n_trials) — e.g. sqrt(8000) ~ 89. If it is flat,
+% widen sim_noise_factors upward or lower sim_n_trials.
+fprintf('\n  Noise-response check (r^2 vs perfect, cord+bundle mean):\n');
+fprintf('    factors span %gx to %gx; effective noise = baseline/sqrt(%d) = baseline/%.1f\n', ...
+    min(sim_noise_factors), max(sim_noise_factors), sim_n_trials, sqrt(sim_n_trials));
+any_flat = false;
+for p = 1:numel(pert_names)
+    R = results.(pert_names{p});
+    for si = 1:n_sys
+        lo = mean(R.cordmean_perf(si, :, :, 1),   'all', 'omitnan');
+        hi = mean(R.cordmean_perf(si, :, :, end), 'all', 'omitnan');
+        flat = abs(lo - hi) < 0.02;
+        any_flat = any_flat || flat;
+        if flat; flag = '<-- FLAT'; else; flag = ''; end
+        fprintf('    %-8s %-10s  r^2[%gx]=%.3f  r^2[%gx]=%.3f   %s\n', ...
+            pert_names{p}, sys_labels{si}, ...
+            min(sim_noise_factors), lo, max(sim_noise_factors), hi, flag);
+    end
+end
+if any_flat
+    warning(['At least one curve barely moves across the noise sweep. The noise ' ...
+             'IS applied but is negligible over this range — widen sim_noise_factors ' ...
+             'upward (toward sqrt(sim_n_trials)) or reduce sim_n_trials in config_sim.']);
+end
+
 outfile = fullfile(sim_out_dir, 'sim_pert_noise.mat');
 save(outfile, 'results', 'pert_names', ...
     'sim_noise_factors', 'sim_pert_n_real', 'sim_n_trials', ...
