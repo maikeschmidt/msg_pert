@@ -12,7 +12,7 @@
 % more diffuse fields that tolerate error better. Step 1 tests that directly by
 % putting the three field maps side by side.
 %
-% WORKFLOW (4 steps):
+% WORKFLOW (6 steps):
 %   1. sim_plot_topoplots       Perfect forward fields for Biot-Savart MSG,
 %                               BEM MSG, and BEM ESG at one source, for both
 %                               arrays and every sensor axis and orientation.
@@ -25,6 +25,14 @@
 %                               of cord position.
 %   4. sim_plot_noise_topoplot  What one system actually measures at a chosen
 %                               source and noise level, next to the perfect field.
+%   5. sim_perturbation_noise   Same noise sweep, but applied to every PERTURBED
+%                               forward field (source, sensor, conductivity),
+%                               scored both against the perturbed field itself
+%                               (noise only) and against the perfect field
+%                               (model error + noise). Needs the perturbation
+%                               pipeline to have been run (leadfields_organised.mat).
+%   6. sim_plot_perturbation_noise  r^2 vs noise curves grouped into small /
+%                               medium / large bundles, per perturbation family.
 %
 % USAGE:
 %   run_simulation_analysis
@@ -63,6 +71,7 @@ fprintf('  University College London\n');
 fprintf('  Department of Imaging Neuroscience\n\n');
 
 config_sim;
+config_pert;   % for forward_fields_base (perturbation leadfields, steps 5-6)
 
 rsq_file = fullfile(sim_out_dir, 'sim_noise_rsq.mat');
 
@@ -71,10 +80,10 @@ rsq_file = fullfile(sim_out_dir, 'sim_noise_rsq.mat');
 % STEP 1: Perfect forward field topoplots
 % =========================================================================
 
-fprintf('[1/4] Plotting perfect forward fields (Biot-Savart MSG, BEM MSG, BEM ESG)...\n');
+fprintf('[1/6] Plotting perfect forward fields (Biot-Savart MSG, BEM MSG, BEM ESG)...\n');
 try
     run('sim_plot_topoplots.m');
-    fprintf('[1/4] Complete.\n\n');
+    fprintf('[1/6] Complete.\n\n');
 catch err
     fprintf('WARNING: sim_plot_topoplots failed:\n  %s\n', err.message);
     fprintf('Check the model paths in config_sim.m. Continuing...\n\n');
@@ -85,10 +94,10 @@ end
 % STEP 2: Simulate data + sensor noise, compute r^2
 % =========================================================================
 
-fprintf('[2/4] Simulating source data with sensor noise...\n');
+fprintf('[2/6] Simulating source data with sensor noise...\n');
 try
     run('sim_simulate_noise.m');
-    fprintf('[2/4] Complete.\n\n');
+    fprintf('[2/6] Complete.\n\n');
 catch err
     fprintf('ERROR: sim_simulate_noise failed:\n  %s\n', err.message);
     fprintf('Steps 3-4 depend on this — stopping.\n');
@@ -105,10 +114,10 @@ end
 % STEP 3: r^2 vs noise level curves
 % =========================================================================
 
-fprintf('[3/4] Plotting r^2 vs noise level...\n');
+fprintf('[3/6] Plotting r^2 vs noise level...\n');
 try
     run('sim_plot_noise_curves.m');
-    fprintf('[3/4] Complete.\n\n');
+    fprintf('[3/6] Complete.\n\n');
 catch err
     fprintf('WARNING: sim_plot_noise_curves failed:\n  %s\n', err.message);
     fprintf('Continuing...\n\n');
@@ -119,13 +128,54 @@ end
 % STEP 4: Topoplot at a chosen source and noise level
 % =========================================================================
 
-fprintf('[4/4] Plotting measured (noisy) topoplots...\n');
+fprintf('[4/6] Plotting measured (noisy) topoplots...\n');
 try
     run('sim_plot_noise_topoplot.m');
-    fprintf('[4/4] Complete.\n\n');
+    fprintf('[4/6] Complete.\n\n');
 catch err
     fprintf('WARNING: sim_plot_noise_topoplot failed:\n  %s\n', err.message);
     fprintf('Continuing...\n\n');
+end
+
+
+% =========================================================================
+% STEP 5: Noise sweep applied to every perturbation
+% =========================================================================
+% Requires the perturbation pipeline to have produced leadfields_organised.mat
+% (via pt_load_leadfields). Skips gracefully if it is not present.
+
+pert_lf = fullfile(forward_fields_base, 'leadfields_organised.mat');
+if isfile(pert_lf)
+    fprintf('[5/6] Simulating noise on perturbed forward fields...\n');
+    try
+        run('sim_perturbation_noise.m');
+        fprintf('[5/6] Complete.\n\n');
+    catch err
+        fprintf('WARNING: sim_perturbation_noise failed:\n  %s\n', err.message);
+        fprintf('Continuing...\n\n');
+    end
+else
+    fprintf('[5/6] Skipping perturbation-noise — %s not found.\n', pert_lf);
+    fprintf('       Run the pt_* perturbation pipeline first.\n\n');
+end
+
+
+% =========================================================================
+% STEP 6: Perturbation-noise curves (small / medium / large bundles)
+% =========================================================================
+
+pert_noise_file = fullfile(sim_out_dir, 'sim_pert_noise.mat');
+if isfile(pert_noise_file)
+    fprintf('[6/6] Plotting perturbation-noise curves...\n');
+    try
+        run('sim_plot_perturbation_noise.m');
+        fprintf('[6/6] Complete.\n\n');
+    catch err
+        fprintf('WARNING: sim_plot_perturbation_noise failed:\n  %s\n', err.message);
+        fprintf('Continuing...\n\n');
+    end
+else
+    fprintf('[6/6] Skipping perturbation-noise curves — step 5 produced no output.\n\n');
 end
 
 fprintf('=========================================\n');
