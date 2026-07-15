@@ -17,8 +17,9 @@ Run `run_simulation_analysis` (or the steps individually):
 |------|--------|----------|
 | 1 | `sim_plot_topoplots` | Noise-free forward fields (Biot-Savart MSG, BEM MSG, BEM ESG) for the chosen geometry variant |
 | 2 | `sim_run_geometries` | For every variant in `sim_geometries` × every system: evoked response + trial-averaged noise, scored by r² vs the noise-free field. One output subfolder per variant. |
-| 3 | `sim_plot_comparison` | Overlaid r²-vs-noise curves, one figure per system (rows = source/sensor/cond, lines = baseline/small/medium/large) |
-| 4 | `sim_plot_noise_topoplot` | What one system actually measures at a chosen source + noise level |
+| 3 | `sim_plot_original` | Base figures for the **original** geometry, all systems overlaid: median-across-cord (IQR band), single chosen source (±1 s.d.), and r² along the cord at each noise level |
+| 4 | `sim_plot_comparison` | Overlaid r²-vs-noise curves across variants, one figure per system (rows = source/sensor/cond, lines = baseline/small/medium/large) |
+| 5 | `sim_plot_noise_topoplot` | What one system actually measures at a chosen source + noise level |
 
 ## Configure `config_sim.m`
 

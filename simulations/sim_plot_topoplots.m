@@ -94,8 +94,13 @@ for m = 1:n_models
             fprintf('no file (%s) — skipped\n', geo.kind);
             continue
         end
+        if strcmp(geo.kind, 'cond')
+            load_scale = sim_models(m).cond_scale;
+        else
+            load_scale = sim_models(m).scale;
+        end
         lf_all{m, a} = sim_load_leadfield(file, sim_models(m).var, ...
-            sim_models(m).scale, sim_models(m).is_meg, sim_models(m).n_axes);
+            load_scale, sim_models(m).is_meg, sim_models(m).n_axes);
         pos_all{m, a} = sim_sensor_positions(sim_geom_file(sim_models(m), geo), ...
             arr, sim_models(m).is_meg, lf_all{m, a}.n_sensor_axes);
         fprintf('%d sources, %d axes, %d sensors/axis\n', ...

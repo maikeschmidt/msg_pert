@@ -95,7 +95,14 @@ for gi = 1:numel(sim_geometries)
             continue
         end
 
-        lf = sim_load_leadfield(lf_path, model.var, model.scale, ...
+        % Conductivity files carry an extra baked scale (see config_sim); use
+        % the cond-specific scale so cond and standard leadfields are comparable.
+        if strcmp(geo.kind, 'cond')
+            load_scale = model.cond_scale;
+        else
+            load_scale = model.scale;
+        end
+        lf = sim_load_leadfield(lf_path, model.var, load_scale, ...
             model.is_meg, model.n_axes);
         n_src = lf.n_sources;
 

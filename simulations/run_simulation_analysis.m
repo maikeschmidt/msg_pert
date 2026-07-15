@@ -7,7 +7,7 @@
 % (SQUID MSG, OP-MSG, ESG) AND between geometry variants (the unperturbed model
 % vs representative source / sensor / conductivity perturbations)?
 %
-% WORKFLOW (4 steps):
+% WORKFLOW (5 steps):
 %   1. sim_plot_topoplots     Perfect forward fields (Biot-Savart MSG, BEM MSG,
 %                             BEM ESG) for the chosen geometry variant, both
 %                             arrays, every sensor axis and orientation.
@@ -18,10 +18,14 @@
 %                             trial-averaged sensor noise across the sweep, and
 %                             score r^2 vs the noise-free field. One output
 %                             subfolder per variant.
-%   3. sim_plot_comparison    Overlay the r^2-vs-noise curves across variants,
+%   3. sim_plot_original      Base figures for the ORIGINAL geometry, all systems
+%                             overlaid: median-across-cord (IQR band), a single
+%                             chosen source (+/-1 s.d.), and r^2 along the cord at
+%                             each noise level.
+%   4. sim_plot_comparison    Overlay the r^2-vs-noise curves across variants,
 %                             one figure per system: rows = perturbation family,
 %                             lines = baseline / small / medium / large.
-%   4. sim_plot_noise_topoplot  What one system actually measures at a chosen
+%   5. sim_plot_noise_topoplot  What one system actually measures at a chosen
 %                             source and noise level, next to the noise-free field.
 %
 % To compare noise levels for a SINGLE geometry only, put just that one entry in
@@ -74,10 +78,10 @@ idxfile = fullfile(sim_out_dir, 'sim_geometry_index.mat');
 % STEP 1: Perfect forward-field topoplots (chosen geometry variant)
 % =========================================================================
 
-fprintf('[1/4] Plotting perfect forward fields...\n');
+fprintf('[1/5] Plotting perfect forward fields...\n');
 try
     run('sim_plot_topoplots.m');
-    fprintf('[1/4] Complete.\n\n');
+    fprintf('[1/5] Complete.\n\n');
 catch err
     fprintf('WARNING: sim_plot_topoplots failed:\n  %s\n', err.message);
     fprintf('Check the model paths in config_sim.m. Continuing...\n\n');
@@ -88,10 +92,10 @@ end
 % STEP 2: Simulate evoked + noise for every geometry variant
 % =========================================================================
 
-fprintf('[2/4] Simulating evoked response + noise across geometry variants...\n');
+fprintf('[2/5] Simulating evoked response + noise across geometry variants...\n');
 try
     run('sim_run_geometries.m');
-    fprintf('[2/4] Complete.\n\n');
+    fprintf('[2/5] Complete.\n\n');
 catch err
     fprintf('ERROR: sim_run_geometries failed:\n  %s\n', err.message);
     fprintf('Steps 3-4 depend on this — stopping.\n');
@@ -105,13 +109,27 @@ end
 
 
 % =========================================================================
-% STEP 3: Comparison curves across variants
+% STEP 3: Base figures for the ORIGINAL (unperturbed) geometry
 % =========================================================================
 
-fprintf('[3/4] Plotting comparison curves across geometry variants...\n');
+fprintf('[3/5] Plotting original-geometry noise curves (all systems)...\n');
+try
+    run('sim_plot_original.m');
+    fprintf('[3/5] Complete.\n\n');
+catch err
+    fprintf('WARNING: sim_plot_original failed:\n  %s\n', err.message);
+    fprintf('Continuing...\n\n');
+end
+
+
+% =========================================================================
+% STEP 4: Comparison curves across variants
+% =========================================================================
+
+fprintf('[4/5] Plotting comparison curves across geometry variants...\n');
 try
     run('sim_plot_comparison.m');
-    fprintf('[3/4] Complete.\n\n');
+    fprintf('[4/5] Complete.\n\n');
 catch err
     fprintf('WARNING: sim_plot_comparison failed:\n  %s\n', err.message);
     fprintf('Continuing...\n\n');
@@ -119,13 +137,13 @@ end
 
 
 % =========================================================================
-% STEP 4: Noisy measured topoplot at a chosen source and noise level
+% STEP 5: Noisy measured topoplot at a chosen source and noise level
 % =========================================================================
 
-fprintf('[4/4] Plotting measured (noisy) topoplots...\n');
+fprintf('[5/5] Plotting measured (noisy) topoplots...\n');
 try
     run('sim_plot_noise_topoplot.m');
-    fprintf('[4/4] Complete.\n\n');
+    fprintf('[5/5] Complete.\n\n');
 catch err
     fprintf('WARNING: sim_plot_noise_topoplot failed:\n  %s\n', err.message);
     fprintf('Continuing...\n\n');
