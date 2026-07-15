@@ -173,6 +173,40 @@ n_ori = numel(sim_orientations);
 
 
 % -------------------------------------------------------------------------
+% Reconcile the leadfield unit scale
+% -------------------------------------------------------------------------
+% CRITICAL: leadfields_organised.mat was scaled by pt_load_leadfields, NOT by
+% config_sim. Those two disagree. The noise floors (sigma_mat) are in
+% config_sim's physical units (fT or uV), so the loaded leadfields must be
+% brought into the SAME units or the signal-to-noise ratio is wrong by whatever
+% factor separates the two scales — which flattens every curve.
+%
+%   pt_load_leadfields (bem_unit_scale):  MSG 1e15,  ESG 1e6   (patched assumption)
+%   config_sim (correct for this study):  MSG msg_bem_scale,  ESG esg_scale
+%
+% So each loaded field is multiplied by target/pt_used. With the unpatched
+% FieldTrip scales (msg_bem_scale = 1e6, esg_scale = 1e-3) this comes to 1e-9
+% for both modalities — the nA*m vs A*m factor the perturbation pipeline never
+% corrected. If you later fix pt_load_leadfields to use the correct scale, set
+% pt_used below to match so this becomes 1.
+if is_meg_run
+    pt_used      = 1e15;            % pt_load_leadfields MSG BEM scale
+    target_scale = msg_bem_scale;   % config_sim MSG BEM scale
+else
+    pt_used      = 1e6;             % pt_load_leadfields ESG BEM scale
+    target_scale = esg_scale;       % config_sim ESG scale
+end
+lf_rescale = target_scale / pt_used;
+
+fprintf('  Leadfield rescale (organised -> config_sim units): x%.3g\n', lf_rescale);
+if lf_rescale ~= 1
+    fprintf(['    (leadfields_organised.mat was built with a different scale than ' ...
+             'config_sim;\n     rescaling so the signal matches the physical noise ' ...
+             'floors)\n']);
+end
+
+
+% -------------------------------------------------------------------------
 % Main loop over perturbation families
 % -------------------------------------------------------------------------
 results = struct();   % results.(name).self / .perfect etc.
@@ -217,8 +251,19 @@ for p = 1:numel(perts)
         for o = 1:n_ori
             ori = sim_orientations{o};
             for src = 1:n_src
-                g = vertcat(lf.(ori){:, src});          % perturbed field
-                h = vertcat(ref_lf.(ori){:, src});      % perfect field
+                g = vertcat(lf.(ori){:, src})     * lf_rescale;  % perturbed field
+                h = vertcat(ref_lf.(ori){:, src}) * lf_rescale;  % perfect field
+
+                % One-off signal-vs-noise sanity print on the very first field.
+                % If peak|g| is not within a few orders of magnitude of sigma,
+                % the curves will be flat (all r^2 ~ 1 or all ~ 0) — usually a
+                % leftover scale mismatch.
+                if ~exist('sig_checked', 'var')
+                    [~, base_col] = min(abs(sim_noise_factors - 1));
+                    fprintf('    Signal check: peak|g| = %.3g, sigma@1x = %.3g (%s)\n', ...
+                        max(abs(g)), sigma_mat(1, base_col), sys_labels{1});
+                    sig_checked = true;
+                end
 
                 % refs{1} = self (g), refs{2} = perfect (h)
                 rq = sim_noise_rsq_refs(g, {g, h}, w, sigma_mat, sim_pert_n_real);
@@ -275,10 +320,10 @@ src_mm    = (0:n_src_out-1) * src_spacing_mm;
 % -------------------------------------------------------------------------
 % Prints cord+bundle-mean r^2 (vs perfect) at the LOWEST and HIGHEST noise
 % level. If these two are nearly equal the curve is flat: the sweep does not
-% span the range where noise matters. With trial averaging the effective noise
-% is baseline/sqrt(sim_n_trials), so to see r^2 transition the noise factors
-% must reach roughly sqrt(sim_n_trials) — e.g. sqrt(8000) ~ 89. If it is flat,
-% widen sim_noise_factors upward or lower sim_n_trials.
+% span the range where noise matters. The most common cause of flatness is a
+% leadfield unit-scale mismatch (see the "Signal check" line above): if
+% peak|signal| is orders of magnitude from sigma, the SNR is wrong — check
+% lf_rescale, not the sweep range.
 fprintf('\n  Noise-response check (r^2 vs perfect, cord+bundle mean):\n');
 fprintf('    factors span %gx to %gx; effective noise = baseline/sqrt(%d) = baseline/%.1f\n', ...
     min(sim_noise_factors), max(sim_noise_factors), sim_n_trials, sqrt(sim_n_trials));
@@ -297,9 +342,10 @@ for p = 1:numel(pert_names)
     end
 end
 if any_flat
-    warning(['At least one curve barely moves across the noise sweep. The noise ' ...
-             'IS applied but is negligible over this range — widen sim_noise_factors ' ...
-             'upward (toward sqrt(sim_n_trials)) or reduce sim_n_trials in config_sim.']);
+    warning(['At least one curve barely moves across the noise sweep. Check the ' ...
+             '"Signal check" line: if peak|signal| is orders of magnitude from ' ...
+             'sigma, this is a leadfield scale mismatch (lf_rescale), not the ' ...
+             'sweep range.']);
 end
 
 outfile = fullfile(sim_out_dir, 'sim_pert_noise.mat');
