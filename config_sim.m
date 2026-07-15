@@ -113,9 +113,9 @@ sim_save_dir   = 'D:\Simulations\Pertubations\results\simulation';% SET THIS
 sim_out_dir    = 'D:\Simulations\Pertubations\fields\simulation'; % SET THIS
 
 % Roots of the three leadfield sets (perfect / unperturbed forward fields)
-msg_bem_root   = 'D:\Simulations\Pertubations\fields\mag\bem';        % SET THIS
+msg_bem_root   = 'D:\Simulations\Pertubations\fields\mag\bem_cond_msg';        % SET THIS
 msg_bslaw_root = 'D:\Simulations\Pertubations\fields\mag\bs_law';     % SET THIS
-esg_bem_root   = 'D:\Simulations\Pertubations\fields\elec\bem_elec';    % SET THIS
+esg_bem_root   = 'D:\Simulations\Pertubations\fields\elec\bem_cond_esg';    % SET THIS
 
 % Geometry stems (WITHOUT the leading 'geometries_' prefix)
 msg_geom_short = 'original_source_original';   % SET THIS
@@ -272,7 +272,7 @@ sim_systems(2).model          = 2;      % MSG BEM
 sim_systems(2).noise_baseline = 20;     % fT/sqrt(Hz)  (7-20 typical)
 sim_systems(2).noise_unit     = 'fT/\surdHz';
 sim_systems(2).noise_unit_txt = 'fT/sqrt(Hz)';
-sim_systems(2).bandwidth_hz   = 150;    % OPM dynamic range rolls off ~150 Hz
+sim_systems(2).bandwidth_hz   = 750;    % OPM dynamic range rolls off ~150 Hz (but for comparison we clip to Nyquist)
 sim_systems(2).color          = [0.10, 0.60, 0.20];
 
 sim_systems(3).label          = 'ESG';
@@ -298,10 +298,10 @@ sim_systems(3).color          = [0.80, 0.15, 0.10];
 % window, and the pre- and post-burst samples carry noise only — which is
 % exactly the regime a real evoked recording is scored in.
 
-sim_fs             = 1000;    % sampling rate (Hz)
+sim_fs             = 1500;    % sampling rate (Hz)
 sim_duration       = 0.100;   % epoch length (s) — 100 ms post-stimulus
-sim_freq           = 90;      % carrier frequency of the burst (Hz)
-sim_dipole_nAm     = 1;       % PEAK source strength (nA*m)
+sim_freq           = 70;      % carrier frequency of the burst (Hz)
+sim_dipole_nAm     = 3;       % PEAK source strength (nA*m)
 
 sim_evoked_latency = 0.025;   % s — burst peaks 25 ms after trial start
 sim_evoked_sigma   = 0.005;   % s — Gaussian envelope s.d. (~2 cycles at 90 Hz)
@@ -377,9 +377,9 @@ sim_ori_display  = {'Ventral-Dorsal', 'Rostral-Caudal', 'Left-Right'};
 
 src_spacing_mm  = 5;     % mm between adjacent sources along the cord
 
-sim_topo_src_mm = 275;   % SET THIS: cord distance (mm) for the topoplot figures
-sim_focus_src_mm = 275;  % SET THIS: cord distance (mm) for the single-source r-sq curve
-sim_focus_noise_factor = 8;   % SET THIS: noise level for the noisy topoplot (x baseline)
+sim_topo_src_mm = 75;   % SET THIS: cord distance (mm) for the topoplot figures
+sim_focus_src_mm = 75;  % SET THIS: cord distance (mm) for the single-source r-sq curve
+sim_focus_noise_factor = 0.5;   % SET THIS: noise level for the noisy topoplot (x baseline)
 
 
 % =========================================================================

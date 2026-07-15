@@ -46,9 +46,6 @@
 % Author: Maike Schmidt
 % Email:  maike.schmidt.23@ucl.ac.uk
 
-clearvars
-close all
-clc
 
 config_sim;
 pt_add_functions;
