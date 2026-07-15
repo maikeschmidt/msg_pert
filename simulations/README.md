@@ -18,8 +18,14 @@ Run `run_simulation_analysis` (or the steps individually):
 | 1 | `sim_plot_topoplots` | Noise-free forward fields (Biot-Savart MSG, BEM MSG, BEM ESG) for the chosen geometry variant |
 | 2 | `sim_run_geometries` | For every variant in `sim_geometries` × every system: evoked response + trial-averaged noise, scored by r² vs the noise-free field. One output subfolder per variant. |
 | 3 | `sim_plot_original` | Base figures for the **original** geometry, all systems overlaid: median-across-cord (IQR band), single chosen source (±1 s.d.), and r² along the cord at each noise level |
-| 4 | `sim_plot_comparison` | Overlaid r²-vs-noise curves across variants, one figure per system (rows = source/sensor/cond, lines = baseline/small/medium/large) |
-| 5 | `sim_plot_noise_topoplot` | What one system actually measures at a chosen source + noise level |
+| 4 | `sim_plot_comparison` | Overlaid r²-vs-noise curves across variants, one figure per system (rows = source/sensor/cond, lines = baseline/small/medium/large). Line = mean across cord, band = IQR across source points. |
+| 5 | `sim_plot_worstcase` | One figure comparing the three systems under the **largest** shift of each family, scored against the **original** field (rows = family, cols = orientation, lines = SQUID/OP-MSG/ESG) |
+| 6 | `sim_plot_noise_topoplot` | What one system actually measures at a chosen source + noise level |
+
+**Two r² references.** Steps 2–4 score each variant against its *own* noise-free
+field (pure noise robustness; r²→1 at zero noise). Step 5 scores the worst-case
+variant against the *original* unperturbed field, so r² starts below 1 by the
+amount the shift alone changed the field — the combined model-error + noise view.
 
 ## Configure `config_sim.m`
 
