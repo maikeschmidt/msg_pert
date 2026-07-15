@@ -59,6 +59,8 @@ clearvars
 close all
 clc
 
+Metadata;
+
 fprintf('  MSG Realistic-Measurement Simulation Pipeline\n');
 fprintf('  University College London\n');
 fprintf('  Department of Imaging Neuroscience\n\n');
