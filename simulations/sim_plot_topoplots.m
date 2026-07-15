@@ -30,7 +30,7 @@
 %   rather than being silently dropped.
 %
 % DEPENDENCIES:
-%   config_sim, pt_add_functions
+%   config_sim, pt_add_functions (msg_fwd for plot_topoplot_publication)
 %   sim_load_leadfield(), sim_sensor_positions()   — msg_pert/functions/
 %   plot_topoplot_publication()                    — msg_fwd/functions/
 %
@@ -55,10 +55,24 @@ arrays    = {'front', 'back'};
 n_models  = numel(sim_models);
 n_ori     = numel(sim_orientations);
 
+% Which geometry variant to visualise (default: the unperturbed baseline).
+% Set sim_topo_geom in config_sim to a variant .name to topoplot a shifted case.
+if exist('sim_topo_geom', 'var') && ~isempty(sim_topo_geom)
+    gsel = find(strcmp({sim_geometries.name}, sim_topo_geom), 1);
+    if isempty(gsel)
+        error('sim_topo_geom "%s" not found in sim_geometries.', sim_topo_geom);
+    end
+else
+    gsel = find(strcmp({sim_geometries.group}, 'baseline'), 1);
+    if isempty(gsel); gsel = 1; end
+end
+geo = sim_geometries(gsel);
+
 % Cord distance -> source index (sources are evenly spaced along the cord)
 src_idx = round(sim_topo_src_mm / src_spacing_mm) + 1;
 
 fprintf('sim_plot_topoplots\n');
+fprintf('  Geometry: %s (%s)\n', geo.name, geo.short);
 fprintf('  Source: %.0f mm along cord (index %d)\n', sim_topo_src_mm, src_idx);
 fprintf('  Models: %d   Arrays: front, back\n\n', n_models);
 
@@ -73,12 +87,16 @@ pos_all = cell(n_models, numel(arrays));
 for m = 1:n_models
     for a = 1:numel(arrays)
         arr  = arrays{a};
-        file = sim_models(m).(arr);
+        file = sim_lf_path(sim_models(m), geo, arr);
 
         fprintf('  Loading %-20s %-5s ... ', sim_models(m).label, arr);
+        if ~isfile(file)
+            fprintf('no file (%s) — skipped\n', geo.kind);
+            continue
+        end
         lf_all{m, a} = sim_load_leadfield(file, sim_models(m).var, ...
             sim_models(m).scale, sim_models(m).is_meg, sim_models(m).n_axes);
-        pos_all{m, a} = sim_sensor_positions(sim_models(m).geom_file, ...
+        pos_all{m, a} = sim_sensor_positions(sim_geom_file(sim_models(m), geo), ...
             arr, sim_models(m).is_meg, lf_all{m, a}.n_sensor_axes);
         fprintf('%d sources, %d axes, %d sensors/axis\n', ...
             lf_all{m, a}.n_sources, lf_all{m, a}.n_sensor_axes, ...
@@ -121,6 +139,7 @@ for m = 1:n_models
     fprintf('    %-20s scale x%-8g ', sim_models(m).label, sim_models(m).scale);
     for a = 1:numel(arrays)
         lf = lf_all{m, a};
+        if isempty(lf); fprintf('%s: (missing)   ', arrays{a}); continue; end
         pk = 0;
         for ax = 1:lf.n_sensor_axes
             for ori = 1:n_ori
@@ -135,7 +154,7 @@ end
 % The two MSG models should agree to within a factor of a few. A round-number
 % ratio is the signature of a unit-scale error.
 msg_idx = find([sim_models.is_meg]);
-if numel(msg_idx) == 2
+if numel(msg_idx) == 2 && ~isempty(lf_all{msg_idx(1), 2}) && ~isempty(lf_all{msg_idx(2), 2})
     pk = zeros(1, 2);
     for i = 1:2
         lf = lf_all{msg_idx(i), 2};   % back array
@@ -178,6 +197,7 @@ n_slots    = numel(slot_names);
 % Every axis a model actually has must be named and assigned to a slot.
 for m = 1:n_models
     for a = 1:numel(arrays)
+        if isempty(lf_all{m, a}); continue; end
         n_ax_m = lf_all{m, a}.n_sensor_axes;
         if numel(sim_models(m).axis_names) < n_ax_m || ...
            numel(sim_models(m).axis_slot)  < n_ax_m
@@ -203,6 +223,19 @@ for a = 1:numel(arrays)
         for m = 1:n_models
             lf  = lf_all{m, a};
             pos = pos_all{m, a};
+
+            % Model missing for this geometry (e.g. no bslaw/ESG for a cond variant)
+            if isempty(lf)
+                for ori = 1:n_ori
+                    nexttile(tl, (m-1)*n_ori + ori);
+                    text(0.5, 0.5, sprintf('%s\nnot available for\n%s', ...
+                        sim_models(m).label, geo.name), ...
+                        'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
+                        'FontSize', 10, 'Color', [0.6 0.6 0.6], 'Interpreter', 'none');
+                    axis off
+                end
+                continue
+            end
 
             % Which of THIS model's axes (if any) sits in this slot?
             ax = find(sim_models(m).axis_slot(1:lf.n_sensor_axes) == slot, 1);

@@ -101,6 +101,19 @@
 
 
 % =========================================================================
+% PACKAGE PATH BOOTSTRAP (self-contained)
+% =========================================================================
+% This module lives in msg_pert/simulations and is self-contained. Add its own
+% folder + functions/, and the msg_pert root (for pt_add_functions, which pulls
+% in msg_fwd for plot_topoplot_publication).
+sim_dir = fileparts(mfilename('fullpath'));
+if isempty(sim_dir); sim_dir = fileparts(which('config_sim')); end
+addpath(sim_dir);
+addpath(fullfile(sim_dir, 'functions'));
+addpath(fileparts(sim_dir));   % msg_pert root (pt_add_functions -> msg_fwd)
+
+
+% =========================================================================
 % USER CONFIGURATION — paths
 % =========================================================================
 
@@ -112,14 +125,19 @@ esg_geoms_path = 'D:\Simulations\Pertubations\geoms_elec';    % SET THIS
 sim_save_dir   = 'D:\Simulations\Pertubations\results\simulation';% SET THIS
 sim_out_dir    = 'D:\Simulations\Pertubations\fields\simulation'; % SET THIS
 
-% Roots of the three leadfield sets (perfect / unperturbed forward fields)
-msg_bem_root   = 'D:\Simulations\Pertubations\fields\mag\bem_cond_msg';        % SET THIS
+% Roots of the leadfield sets (perfect + perturbed forward fields).
+% These hold BOTH the original and the source/sensor-shift geometries, each in
+% its own geometries_<short> subfolder (standard msg_fwd output layout).
+msg_bem_root   = 'D:\Simulations\Pertubations\fields\mag\bem';        % SET THIS
 msg_bslaw_root = 'D:\Simulations\Pertubations\fields\mag\bs_law';     % SET THIS
-esg_bem_root   = 'D:\Simulations\Pertubations\fields\elec\bem_cond_esg';    % SET THIS
+esg_bem_root   = 'D:\Simulations\Pertubations\fields\elec\bem_elec';  % SET THIS
 
-% Geometry stems (WITHOUT the leading 'geometries_' prefix)
-msg_geom_short = 'original_source_original';   % SET THIS
-esg_geom_short = 'original_source_original';   % SET THIS
+% Roots holding the BEM-conductivity leadfields (produced by
+% run_conductivity_perturbation) — one per modality. Cond files live under the
+% root in geometries_<cond_short>/leadfield_<cond_short>_bem_cond_bundleB_shiftS_<array>.mat
+msg_cond_root  = 'D:\Simulations\Pertubations\fields\mag\bem_cond_msg';   % SET THIS
+esg_cond_root  = 'D:\Simulations\Pertubations\fields\elec\bem_cond_esg';  % SET THIS
+cond_short     = 'original_source_original';   % geometry the conductivity change was applied to
 
 if ~exist(sim_save_dir, 'dir'); mkdir(sim_save_dir); end
 if ~exist(sim_out_dir,  'dir'); mkdir(sim_out_dir);  end
@@ -163,64 +181,141 @@ else
     esg_scale     = 1e-3;   % V/(A*m) -> uV/nAm
 end
 
-sim_models = struct('label', {}, 'short', {}, 'front', {}, 'back', {}, ...
-                    'var', {}, 'scale', {}, 'is_meg', {}, 'geom_file', {}, ...
-                    'n_axes', {}, 'axis_names', {}, 'axis_slot', {});
+% Models are now defined by COMPONENTS (root, method, scale, ...) rather than
+% fixed file paths, so the same model can be loaded for ANY geometry stem. The
+% actual .mat path is built at load time by sim_lf_path(model, short, array),
+% and the geometry .mat (sensor positions) by sim_geom_file(model, short).
+sim_models = struct('label', {}, 'id', {}, 'method', {}, 'root', {}, ...
+                    'cond_root', {}, 'geoms_path', {}, 'var', {}, 'scale', {}, ...
+                    'is_meg', {}, 'n_axes', {}, 'axis_names', {}, 'axis_slot', {});
 
 % --- Model 1: MSG, Biot-Savart (infinite homogeneous space — smooth fields)
-sim_models(1).label     = 'MSG — Biot-Savart';
-sim_models(1).short     = 'msg_bslaw';
-sim_models(1).front     = fullfile(msg_bslaw_root, ...
-    sprintf('leadfield_geometries_%s_bslaw_front.mat', msg_geom_short));
-sim_models(1).back      = fullfile(msg_bslaw_root, ...
-    sprintf('leadfield_geometries_%s_bslaw_back.mat',  msg_geom_short));
-sim_models(1).var       = 'leadfield_bs';
-sim_models(1).scale     = 1;
-sim_models(1).is_meg    = true;
-sim_models(1).geom_file = fullfile(msg_geoms_path, ...
-    ['geometries_' msg_geom_short '.mat']);
+sim_models(1).label      = 'MSG — Biot-Savart';
+sim_models(1).id         = 'msg_bslaw';
+sim_models(1).method     = 'bslaw';       % flat folder, leadfield_geometries_<short>_bslaw_<array>.mat
+sim_models(1).root       = msg_bslaw_root;
+sim_models(1).cond_root  = '';            % Biot-Savart has no conductivity variant
+sim_models(1).geoms_path = msg_geoms_path;
+sim_models(1).var        = 'leadfield_bs';
+sim_models(1).scale      = 1;
+sim_models(1).is_meg     = true;
 sim_models(1).n_axes     = 3;
 sim_models(1).axis_names = {'X-axis', 'Y-axis', 'Z-axis'};
 sim_models(1).axis_slot  = [1 2 3];
 
 % --- Model 2: MSG, BEM (individualised anatomy — sharp fields)
-sim_models(2).label     = 'MSG — BEM';
-sim_models(2).short     = 'msg_bem';
-sim_models(2).front     = fullfile(msg_bem_root, ['geometries_' msg_geom_short], ...
-    sprintf('leadfield_%s_bem_front.mat', msg_geom_short));
-sim_models(2).back      = fullfile(msg_bem_root, ['geometries_' msg_geom_short], ...
-    sprintf('leadfield_%s_bem_back.mat',  msg_geom_short));
-sim_models(2).var       = 'leadfield_cord';
-sim_models(2).scale     = msg_bem_scale;
-sim_models(2).is_meg    = true;
-sim_models(2).geom_file = fullfile(msg_geoms_path, ...
-    ['geometries_' msg_geom_short '.mat']);
+sim_models(2).label      = 'MSG — BEM';
+sim_models(2).id         = 'msg_bem';
+sim_models(2).method     = 'bem';         % <root>/geometries_<short>/leadfield_<short>_bem_<array>.mat
+sim_models(2).root       = msg_bem_root;
+sim_models(2).cond_root  = msg_cond_root;
+sim_models(2).geoms_path = msg_geoms_path;
+sim_models(2).var        = 'leadfield_cord';
+sim_models(2).scale      = msg_bem_scale;
+sim_models(2).is_meg     = true;
 sim_models(2).n_axes     = 3;
 sim_models(2).axis_names = {'X-axis', 'Y-axis', 'Z-axis'};
 sim_models(2).axis_slot  = [1 2 3];
 
 % --- Model 3: ESG, BEM (surface potentials — smooth fields)
-sim_models(3).label     = 'ESG — BEM';
-sim_models(3).short     = 'esg_bem';
-sim_models(3).front     = fullfile(esg_bem_root, ['geometries_' esg_geom_short], ...
-    sprintf('leadfield_%s_bem_front.mat', esg_geom_short));
-sim_models(3).back      = fullfile(esg_bem_root, ['geometries_' esg_geom_short], ...
-    sprintf('leadfield_%s_bem_back.mat',  esg_geom_short));
-sim_models(3).var       = 'leadfield_cord';
-sim_models(3).scale     = esg_scale;
-sim_models(3).is_meg    = false;
-sim_models(3).geom_file = fullfile(esg_geoms_path, ...
-    ['geometries_' esg_geom_short '.mat']);
+sim_models(3).label      = 'ESG — BEM';
+sim_models(3).id         = 'esg_bem';
+sim_models(3).method     = 'bem';
+sim_models(3).root       = esg_bem_root;
+sim_models(3).cond_root  = esg_cond_root;
+sim_models(3).geoms_path = esg_geoms_path;
+sim_models(3).var        = 'leadfield_cord';
+sim_models(3).scale      = esg_scale;
+sim_models(3).is_meg     = false;
 % ESG electrodes are not a Cartesian triad: two electrode sets, tangential and
 % radial. n_axes MUST be stated — the ESG channel count (e.g. 342 = 2 x 171)
 % can be divisible by 3, so any code that guesses the axis count from
 % divisibility will wrongly read it as 3 x 114 and mis-slice the leadfield.
-% SET axis_names to match the channel order your ESG leadfield was built in.
 sim_models(3).n_axes     = 2;
 sim_models(3).axis_names = {'Tangential', 'Radial'};
 % ESG tangential lines up with the MSG X-axis, ESG radial with the MSG Z-axis.
-% There is no ESG counterpart to the MSG Y-axis, so slot 2 has no ESG panel.
 sim_models(3).axis_slot  = [1 3];
+
+
+% =========================================================================
+% GEOMETRY VARIANTS TO LOOP OVER
+% =========================================================================
+% Each entry is one leadfield geometry the noise simulation runs on. The loop
+% (sim_run_geometries) creates a per-variant output subfolder, simulates the
+% evoked response + noise for every applicable system, and saves the r^2
+% curves; sim_plot_comparison then overlays all variants.
+%
+% Fields:
+%   .name   subfolder + legend label (filename-safe)
+%   .short  geometry stem (WITHOUT 'geometries_' prefix) — how the leadfield
+%           file is named. For source/sensor shifts pick ONE representative
+%           shift per bundle.
+%   .kind   'standard'  -> leadfield_<short>_bem_<array>.mat  (source/sensor/original)
+%           'cond'      -> leadfield_<cond_short>_bem_cond_bundleB_shiftS_<array>.mat
+%   .group  free-text grouping for the comparison plot ('baseline'/'source'/
+%           'sensor'/'cond'); variants in a group are drawn in one panel.
+%   .bundle small/medium/large label used for colour + line ordering.
+%   For 'cond' only: .cond_bundle, .cond_shift  and (optional) .root override.
+%
+% NOTE ON MODALITY: source, sensor, AND conductivity variants all exist for
+% both MSG and ESG, each under its own root (model.root for source/sensor,
+% model.cond_root for conductivity). Any (variant, system) whose leadfield file
+% is missing is skipped automatically, so this stays robust if some combination
+% was not generated.
+
+sim_geometries = struct('name', {}, 'short', {}, 'kind', {}, 'group', {}, ...
+                        'bundle', {}, 'cond_bundle', {}, 'cond_shift', {}, ...
+                        'root', {});
+
+gi = 0;
+% -- Baseline (unperturbed) --------------------------------------------------
+gi = gi+1;
+sim_geometries(gi) = struct('name','original', 'short','original_source_original', ...
+    'kind','standard', 'group','baseline', 'bundle','none', ...
+    'cond_bundle',[], 'cond_shift',[], 'root','');
+
+% -- Source shifts: one representative shift per bundle ----------------------
+src_reps = {1, 1, 1};   % SET THIS: which shift index to use for bundle 1/2/3
+for b = 1:3
+    gi = gi+1;
+    lbl = {'small','medium','large'};
+    sim_geometries(gi) = struct( ...
+        'name', sprintf('source_%s', lbl{b}), ...
+        'short', sprintf('original_source_bundle%d_shift%d', b, src_reps{b}), ...
+        'kind','standard', 'group','source', 'bundle',lbl{b}, ...
+        'cond_bundle',[], 'cond_shift',[], 'root','');
+end
+
+% -- Sensor shifts: one representative shift per bundle ----------------------
+sen_reps = {1, 1, 1};   % SET THIS: which shift index to use for bundle 1/2/3
+for b = 1:3
+    gi = gi+1;
+    lbl = {'small','medium','large'};
+    sim_geometries(gi) = struct( ...
+        'name', sprintf('sensor_%s', lbl{b}), ...
+        'short', sprintf('original_sensor_bundle%d_shift%d', b, sen_reps{b}), ...
+        'kind','standard', 'group','sensor', 'bundle',lbl{b}, ...
+        'cond_bundle',[], 'cond_shift',[], 'root','');
+end
+
+% -- Conductivity: one representative shift per bundle (MSG and ESG) ---------
+% Cond files all live under the single cond_short geometry, named with
+% bem_cond_bundleB_shiftS, under each modality's own cond root (model.cond_root).
+cond_reps = {1, 1, 1};   % SET THIS: which shift index to use for bundle 1/2/3
+for b = 1:3
+    gi = gi+1;
+    lbl = {'small','medium','large'};
+    sim_geometries(gi) = struct( ...
+        'name', sprintf('cond_%s', lbl{b}), ...
+        'short', cond_short, ...
+        'kind','cond', 'group','cond', 'bundle',lbl{b}, ...
+        'cond_bundle', b, 'cond_shift', cond_reps{b}, 'root', '');
+end
+
+% Colour per bundle magnitude (shared across groups, light -> dark)
+sim_bundle_colors = containers.Map( ...
+    {'none','small','medium','large'}, ...
+    {[0.2 0.2 0.2], [0.30 0.65 0.90], [0.10 0.40 0.70], [0.03 0.20 0.45]});
 
 
 % =========================================================================
@@ -362,11 +457,10 @@ sim_n_trials = 8000;   % SET THIS: trials averaged per condition
 
 % Noise levels as multiples of each system's baseline floor. This range is
 % calibrated so r^2 transitions from ~1 to ~0 at the current trial count and
-% (correctly scaled) leadfield amplitudes — the same range the perfect-field
-% curves (steps 1-4) use. If curves come out flat, the usual cause is NOT this
-% range but a leadfield unit-scale mismatch (see the signal check printed by
-% sim_simulate_noise / sim_perturbation_noise): if peak|signal| is orders of
-% magnitude away from sigma, fix the scale rather than widening this sweep.
+% (correctly scaled) leadfield amplitudes. If curves come out flat, the usual
+% cause is NOT this range but a leadfield unit-scale mismatch (sim_run_geometries
+% prints peak|g| vs sigma@1x per run): if peak|signal| is orders of magnitude
+% away from sigma, fix the scale rather than widening this sweep.
 sim_noise_factors  = [0.125, 0.25, 0.5, 1, 2, 4, 8];   % x baseline
 sim_n_realisations = 20;
 sim_noise_seed     = 2026;
@@ -387,6 +481,10 @@ src_spacing_mm  = 5;     % mm between adjacent sources along the cord
 sim_topo_src_mm = 75;   % SET THIS: cord distance (mm) for the topoplot figures
 sim_focus_src_mm = 75;  % SET THIS: cord distance (mm) for the single-source r-sq curve
 sim_focus_noise_factor = 0.5;   % SET THIS: noise level for the noisy topoplot (x baseline)
+
+% Which geometry VARIANT the topoplot scripts visualise (a .name from
+% sim_geometries). Leave '' to default to the unperturbed baseline.
+sim_topo_geom = '';   % e.g. 'source_large' to topoplot a large source shift
 
 
 % =========================================================================

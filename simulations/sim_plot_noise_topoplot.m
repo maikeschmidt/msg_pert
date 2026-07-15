@@ -32,7 +32,7 @@
 %   noisy panel is not silently rescaled to look cleaner than it is.
 %
 % DEPENDENCIES:
-%   config_sim, pt_add_functions
+%   config_sim, pt_add_functions (msg_fwd for plot_topoplot_publication)
 %   sim_load_leadfield(), sim_sensor_positions()  — msg_pert/functions/
 %   plot_topoplot_publication()                   — msg_fwd/functions/
 %
@@ -60,15 +60,26 @@ n_ori = numel(sim_orientations);
 [~, t_peak] = max(abs(sim_waveform));
 w_peak      = sim_waveform(t_peak);
 
-% Noise s.d. at the configured level (see sim_simulate_noise for the derivation).
-% This must reproduce sim_simulate_noise's calculation exactly — per-system
+% Noise s.d. at the configured level (see sim_run_geometries for the derivation).
+% This must reproduce sim_run_geometries's calculation exactly — per-system
 % bandwidth AND the sqrt(n_trials) trial-averaging gain — or the topoplot would
 % depict different noise from the one the r-squared curves describe, and the two
 % figures would silently disagree.
 nyquist    = sim_fs / 2;
 trial_gain = sqrt(sim_n_trials);
 
+% Which geometry variant to visualise (default: unperturbed baseline).
+% Set sim_topo_geom in config_sim to a variant .name to show a shifted case.
+if exist('sim_topo_geom', 'var') && ~isempty(sim_topo_geom)
+    gsel = find(strcmp({sim_geometries.name}, sim_topo_geom), 1);
+else
+    gsel = find(strcmp({sim_geometries.group}, 'baseline'), 1);
+    if isempty(gsel); gsel = 1; end
+end
+geo = sim_geometries(gsel);
+
 fprintf('sim_plot_noise_topoplot\n');
+fprintf('  Geometry: %s (%s)\n', geo.name, geo.short);
 fprintf('  Source: %.0f mm    Noise: %gx baseline    Array: %s\n', ...
     sim_focus_src_mm, sim_focus_noise_factor, sim_array);
 fprintf('  Plotting at t = %.1f ms (waveform peak)\n\n', ...
@@ -83,8 +94,13 @@ for k = 1:n_sys
 
     fprintf('  %s (%s)\n', sim_systems(k).label, md.label);
 
-    lf  = sim_load_leadfield(md.(sim_array), md.var, md.scale, md.is_meg, md.n_axes);
-    pos = sim_sensor_positions(md.geom_file, sim_array, md.is_meg, lf.n_sensor_axes);
+    lf_path = sim_lf_path(md, geo, sim_array);
+    if ~isfile(lf_path)
+        fprintf('    no leadfield for %s (%s) — skipped\n', geo.name, geo.kind);
+        continue
+    end
+    lf  = sim_load_leadfield(lf_path, md.var, md.scale, md.is_meg, md.n_axes);
+    pos = sim_sensor_positions(sim_geom_file(md, geo), sim_array, md.is_meg, lf.n_sensor_axes);
 
     src_idx = round(sim_focus_src_mm / src_spacing_mm) + 1;
     if src_idx > lf.n_sources
