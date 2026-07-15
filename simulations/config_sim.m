@@ -382,7 +382,7 @@ sim_systems(2).model          = 2;      % MSG BEM
 sim_systems(2).noise_baseline = 20;     % fT/sqrt(Hz)  (7-20 typical)
 sim_systems(2).noise_unit     = 'fT/\surdHz';
 sim_systems(2).noise_unit_txt = 'fT/sqrt(Hz)';
-sim_systems(2).bandwidth_hz   = 750;    % OPM dynamic range rolls off ~150 Hz (but for comparison we clip to Nyquist)
+sim_systems(2).bandwidth_hz   = 150;    % OPM dynamic range rolls off ~150 Hz 
 sim_systems(2).color          = [0.10, 0.60, 0.20];
 
 sim_systems(3).label          = 'ESG';
@@ -495,7 +495,7 @@ src_spacing_mm  = 5;     % mm between adjacent sources along the cord
 
 sim_topo_src_mm = 75;   % SET THIS: cord distance (mm) for the topoplot figures
 sim_focus_src_mm = 75;  % SET THIS: cord distance (mm) for the single-source r-sq curve
-sim_focus_noise_factor = 0.5;   % SET THIS: noise level for the noisy topoplot (x baseline)
+sim_focus_noise_factor = 1;   % SET THIS: noise level for the noisy topoplot (x baseline)
 
 % Which geometry VARIANT the topoplot scripts visualise (a .name from
 % sim_geometries). Leave '' to default to the unperturbed baseline.
