@@ -14,8 +14,10 @@
 %   comparison_<system>.png / .fig     one per system
 %   comparison_table.tsv                cord-mean r^2 per variant/system/level
 %
-% Each curve is the mean r^2 across the whole cord at each noise level. The
-% baseline (unperturbed) curve is repeated in every family's panels as the
+% Each curve is the mean r^2 across the whole cord at each noise level, with a
+% shaded band spanning the inter-quartile range across source points — so how
+% much recoverability varies ALONG the cord is visible, not just the average.
+% The baseline (unperturbed) curve is repeated in every family's panels as the
 % reference every shift is compared against.
 %
 % DEPENDENCIES:
@@ -74,7 +76,7 @@ for si = 1:numel(sys_shorts)
     % Baseline (unperturbed) for this system, if present
     base_ent = ents(strcmp({ents.group}, 'baseline'));
     if ~isempty(base_ent)
-        base_cm = load_cordmean(base_ent(1), n_ori);
+        [base_cm, base_lo, base_hi] = load_cordstats(base_ent(1), n_ori);
     else
         base_cm = [];
     end
@@ -103,20 +105,25 @@ for si = 1:numel(sys_shorts)
 
             leg_h = gobjects(0); leg_t = {};
 
-            % Baseline reference
+            % Baseline reference (band = spread across cord)
             if ~isempty(base_cm)
                 bcol = sim_bundle_colors('none');
+                fill(ax, [nf, fliplr(nf)], ...
+                     [base_lo(o, :), fliplr(base_hi(o, :))], bcol, ...
+                    'FaceAlpha', 0.10, 'EdgeColor', 'none', 'HandleVisibility', 'off');
                 h0 = plot(ax, nf, base_cm(o, :), '--', 'Color', bcol, ...
                     'LineWidth', pub_line_width);
                 leg_h(end+1) = h0; leg_t{end+1} = 'baseline (unperturbed)'; %#ok<SAGROW>
             end
 
-            % Bundle variants in small -> large order
+            % Bundle variants in small -> large order (band = spread across cord)
             for bo = 1:numel(bundle_order)
                 be = grp_ents(strcmp({grp_ents.bundle}, bundle_order{bo}));
                 if isempty(be); continue; end
-                cm  = load_cordmean(be(1), n_ori);
+                [cm, lo, hi] = load_cordstats(be(1), n_ori);
                 col = sim_bundle_colors(bundle_order{bo});
+                fill(ax, [nf, fliplr(nf)], [lo(o, :), fliplr(hi(o, :))], col, ...
+                    'FaceAlpha', 0.13, 'EdgeColor', 'none', 'HandleVisibility', 'off');
                 hh  = plot(ax, nf, cm(o, :), '-', 'Color', col, ...
                     'LineWidth', pub_line_width, 'Marker', 'o', ...
                     'MarkerSize', pub_marker_size, 'MarkerFaceColor', col);
@@ -150,7 +157,7 @@ for si = 1:numel(sys_shorts)
     title(tl, sprintf('Noise robustness across geometry variants  |  %s', sys_label), ...
         'FontSize', 13, 'FontWeight', 'bold');
     subtitle(tl, sprintf(['%s array; evoked %g nA\\cdotm @ %g Hz, %d trials; ' ...
-                          'mean r^2 across cord'], ...
+                          'line = mean across cord, band = IQR across source points'], ...
         sim_array, sim_dipole_nAm, sim_freq, sim_n_trials), ...
         'FontSize', 9, 'Color', [0.4 0.4 0.4]);
 
@@ -171,12 +178,15 @@ fprintf('\nsim_plot_comparison complete.\nFigures: %s\n', save_dir);
 
 
 % -------------------------------------------------------------------------
-% Local function: cord-mean r^2 [n_ori x n_lev] for one indexed variant
+% Local function: cord statistics for one indexed variant.
+%   cm = mean r^2 across sources [n_ori x n_lev]
+%   lo/hi = 25th/75th percentile across sources (the shaded band showing how
+%           much r^2 varies along the cord at each noise level)
 % -------------------------------------------------------------------------
-function cm = load_cordmean(entry, n_ori)
-    d  = load(entry.file, 'rsq_mean');           % [n_ori x n_src x n_lev]
-    cm = squeeze(mean(d.rsq_mean, 2, 'omitnan')); % -> [n_ori x n_lev]
-    if size(cm, 1) ~= n_ori                       % guard single-orientation case
-        cm = reshape(cm, n_ori, []);
-    end
+function [cm, lo, hi] = load_cordstats(entry, n_ori)
+    d = load(entry.file, 'rsq_mean');             % [n_ori x n_src x n_lev]
+    R = d.rsq_mean;
+    cm = reshape(mean(R,   2, 'omitnan'),  n_ori, []);
+    lo = reshape(prctile(R, 25, 2),        n_ori, []);
+    hi = reshape(prctile(R, 75, 2),        n_ori, []);
 end
