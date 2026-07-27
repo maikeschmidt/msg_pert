@@ -31,7 +31,7 @@
 % for this one combo, how many false positives would that produce by chance,
 % and does my finding survive that?"
 %
-% OUTPUTS (saved to <msg_results_path>/perturbation_analysis/comparison/):
+% OUTPUTS (saved to combined_results_dir from config_pert):
 %   comparison_stats.tsv        — Wilcoxon/Bonferroni results, reference only
 %   permutation_stats.tsv       — permutation aggregate results (both comparisons)
 %   cord_position_stats.tsv     — permutation per-cord-position results,
@@ -68,12 +68,18 @@ fprintf('pt_compare_perturbations\n\n');
 %% USER CONFIGURATION
 %% =========================================================================
 
-% Path containing pert_source_rsq.mat / pert_sensor_rsq.mat / pert_cond_rsq.mat
-% (forward_fields_base from config_pert for the MSG dataset)
-msg_results_path = 'D:\Simulations\Pertubations\fields\mag';   % SET THIS
+% Paths come from config_pert, which defines both modalities side by side and
+% the combined output folder. No need to edit them here.
+config_pert;
 
-% Path to ESG analysis results (leave '' to skip MSG vs ESG comparisons)
-esg_results_path = 'D:\Simulations\Pertubations\fields\elec';   % SET THIS
+% Folders holding each modality's pert_source_rsq.mat / pert_sensor_rsq.mat /
+% pert_cond_rsq.mat (each modality's forward_fields_base).
+msg_results_path = mods_cfg.msg.forward_fields_base;
+if isfield(mods_cfg, 'esg')
+    esg_results_path = mods_cfg.esg.forward_fields_base;   % '' to skip MSG vs ESG
+else
+    esg_results_path = '';
+end
 
 % Which comparisons to run
 run_source_vs_sensor = true;   % source vs sensor (matched bundle, mm-based)
@@ -105,8 +111,12 @@ make_stat_figures = true;
 % no significance brackets).
 show_significance_on_boxplots = false;
 
-% Output directory
-save_dir = fullfile(msg_results_path, 'perturbation_analysis', 'comparison');
+% Output directory — the combined MSG-vs-ESG comparison folder from config_pert
+if exist('combined_results_dir', 'var') && ~isempty(combined_results_dir)
+    save_dir = combined_results_dir;
+else
+    save_dir = fullfile(msg_results_path, 'perturbation_analysis', 'comparison');
+end
 
 % Bundle labels (must match the three-bundle structure in config_pert)
 bundle_display = {'Small', 'Medium', 'Large'};

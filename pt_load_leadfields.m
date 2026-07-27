@@ -76,55 +76,19 @@ pt_add_functions;
 
 
 % =========================================================================
-% USER CONFIGURATION — which forward models are available?
+% CONFIGURATION — all from config_pert (per active modality)
 % =========================================================================
-
-have_bem      = true;    % BEM via Helsinki BEM Framework
-have_fem      = false;   % FEM via DUNEuro
-have_bslaw    = true;    % Biot-Savart (infinite homogeneous space)
-have_sphere   = false;    % Single sphere (Sarvas analytical solution)
-have_bem_cond = true;   % BEM with perturbed tissue conductivities (run_conductivity_perturbation)
-
-% -------------------------------------------------------------------------
-% SENSOR MODALITY — must be declared, not inferred
-% -------------------------------------------------------------------------
-% One msg_pert run covers ONE modality (MSG and ESG leadfields live in separate
-% folders), so state which one this run is loading.
+% config_pert defines both MSG and ESG side by side and activates the one
+% selected by pt_modality (the master loop sets it; standalone defaults to MSG).
+% The variables used below all come from there:
+%   have_bem / have_fem / have_bslaw / have_sphere / have_bem_cond
+%   bem_path / fem_path / bslaw_path / sphere_path / bem_cond_path
+%   sensor_n_axes / sensor_is_meg / bem_unit_scale / forward_fields_base
 %
-%   MSG (triaxial magnetometer array):  sensor_n_axes = 3, sensor_is_meg = true
-%   ESG (tangential/radial electrodes): sensor_n_axes = 2, sensor_is_meg = false
-%
-% These used to be guessed inside organise_leadfield: the axis count from
-% whether the channel count divided by 3, and is_meg was hardcoded true. Both
-% guesses break on ESG. An array of 342 electrodes is 2 axes x 171, but 342 also
-% divides by 3, so it was read as 3 axes x 114 — slicing every leadfield at the
-% wrong boundaries and blending tangential and radial channels into fake "axes",
-% with no error raised. Declaring it removes the guess.
-
-sensor_n_axes = 3;      % SET THIS: 3 = MSG (triaxial), 2 = ESG (tangential/radial)
-sensor_is_meg = true;   % SET THIS: true = MSG, false = ESG
-
-% BEM raw output is T/nAm for MSG and V/nAm for ESG, so the scale to the
-% reporting unit differs by modality:
-%   MSG: 1e15  (T/nAm  -> fT/nAm)
-%   ESG: 1e6   (V/nAm  -> uV/nAm)
-% If your ESG pipeline already saved microvolts, set this to 1.
-if sensor_is_meg
-    bem_unit_scale = 1e15;
-else
-    bem_unit_scale = 1e6;
-end
-
-% Output paths for each method.
-% BEM and FEM: files are in per-geometry subfolders under the base path.
-% Biot-Savart and sphere: files are in a flat folder (no subfolders).
-% Defaults to forward_fields_base — override if you stored outputs elsewhere.
-
-bem_path      = 'D:\Simulations\Pertubations\fields\mag\bem';
-fem_path      = forward_fields_base;
-bslaw_path    = 'D:\Simulations\Pertubations\fields\mag\bs_law';
-sphere_path   = '';
-bem_cond_path = 'D:\Simulations\Pertubations\fields\mag\bem_cond_msg';   % SET THIS: from run_conductivity_perturbation
+% To run a single modality standalone, call pt_modality('set','esg') before
+% pt_load_leadfields, or edit active_modality's fallback in config_pert.
+fprintf('  Modality: %s  (%d axes, is_meg=%d)\n', ...
+    active_modality, sensor_n_axes, sensor_is_meg);
 
 
 % =========================================================================

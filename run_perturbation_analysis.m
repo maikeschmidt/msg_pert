@@ -69,162 +69,54 @@ fprintf('  MSG Perturbation Analysis Pipeline\n');
 fprintf('  University College London\n');
 fprintf('  Department of Imaging Neuroscience\n\n');
 
-config_pert;
+config_pert;                 % defines pert_modalities + combined_results_dir
+mods_to_run = pert_modalities;
 
 % =========================================================================
-% STEP 1: Load and organise perturbed leadfields
+% PER-MODALITY ANALYSIS (loops MSG and ESG — no manual switching)
 % =========================================================================
+% pt_run_one_modality is a FUNCTION so its clearvars-heavy sub-scripts cannot
+% wipe this loop. Each modality writes to its own forward_fields_base and
+% save_base_dir (set per modality in config_pert).
 
-fprintf('[1/7] Loading and organising perturbed leadfields...\n');
-try
-    run('pt_load_leadfields.m');
-    fprintf('[1/7] Complete.\n\n');
-catch err
-    fprintf('ERROR: pt_load_leadfields failed:\n  %s\n', err.message);
-    fprintf('Check that forward model output paths and method flags are\n');
-    fprintf('configured in pt_load_leadfields.m before running.\n');
-    return;
-end
-
-source_rsq_file = fullfile(forward_fields_base, 'pert_source_rsq.mat');
-sensor_rsq_file = fullfile(forward_fields_base, 'pert_sensor_rsq.mat');
-cond_rsq_file   = fullfile(forward_fields_base, 'pert_cond_rsq.mat');
-
-% =========================================================================
-% STEP 2: Compute r²
-% =========================================================================
-
-fprintf('[2/7] Computing perturbation r² (source, sensor, conductivity)...\n');
-try
-    run('pt_compute_rsq.m');
-    fprintf('[2/7] Complete.\n\n');
-catch err
-    fprintf('ERROR: pt_compute_rsq failed:\n  %s\n', err.message);
-    return;
-end
-
-have_source_rsq = isfile(source_rsq_file);
-have_sensor_rsq = isfile(sensor_rsq_file);
-have_cond_rsq   = isfile(cond_rsq_file);
-have_any_rsq    = have_source_rsq || have_sensor_rsq || have_cond_rsq;
-
-% =========================================================================
-% STEP 3: r² curve figures
-% =========================================================================
-
-if have_any_rsq
-    fprintf('[3/7] Plotting perturbation curves...\n');
-    try
-        run('pt_plot_curves.m');
-        fprintf('[3/7] Complete.\n\n');
-    catch err
-        fprintf('WARNING: pt_plot_curves failed:\n  %s\n', err.message);
-        fprintf('Continuing...\n\n');
-    end
-else
-    fprintf('[3/7] Skipping pt_plot_curves — no r² files found.\n\n');
+for mi = 1:numel(mods_to_run)
+    md = mods_to_run{mi};
+    pt_modality('set', md);
+    fprintf('\n==================================================\n');
+    fprintf('  MODALITY %d/%d: %s\n', mi, numel(mods_to_run), upper(md));
+    fprintf('==================================================\n\n');
+    pt_run_one_modality();
 end
 
 % =========================================================================
-% STEP 4: Heatmap summaries
+% COMBINED: cross-perturbation and MSG-vs-ESG comparison
 % =========================================================================
+% Reads each modality's pert_*_rsq.mat (from its forward_fields_base) and writes
+% comparison figures to combined_results_dir. Both are configured in config_pert.
 
-if have_source_rsq || have_sensor_rsq
-    fprintf('[4/7] Plotting heatmaps...\n');
-    try
-        run('pt_plot_heatmaps.m');
-        fprintf('[4/7] Complete.\n\n');
-    catch err
-        fprintf('WARNING: pt_plot_heatmaps failed:\n  %s\n', err.message);
-        fprintf('Continuing...\n\n');
-    end
-else
-    fprintf('[4/7] Skipping pt_plot_heatmaps — no source/sensor r² files found.\n\n');
-end
-
-% =========================================================================
-% STEP 5: Displacement / perturbation vs r²
-% =========================================================================
-
-if have_any_rsq
-    fprintf('[5/7] Plotting displacement vs r²...\n');
-    fprintf('       (individual figures: cervical region; combined + table: full cord)\n');
-    try
-        run('pt_plot_displacement.m');
-        fprintf('[5/7] Complete.\n\n');
-    catch err
-        fprintf('WARNING: pt_plot_displacement failed:\n  %s\n', err.message);
-        fprintf('Continuing...\n\n');
-    end
-else
-    fprintf('[5/7] Skipping pt_plot_displacement — no r² files found.\n\n');
-end
-
-% =========================================================================
-% STEP 6: Slope of r² vs cord position
-% =========================================================================
-
-% Check that at least one trend table exists (produced by pt_plot_displacement)
-sensor_tbl = fullfile(save_base_dir, 'perturbation_analysis', 'sensor', ...
-    'sensor_disp_trend_table.tsv');
-source_tbl = fullfile(save_base_dir, 'perturbation_analysis', 'source', ...
-    'source_disp_trend_table.tsv');
-cond_tbl   = fullfile(save_base_dir, 'perturbation_analysis', 'cond', ...
-    'cond_disp_trend_table.tsv');
-have_any_tbl = isfile(sensor_tbl) || isfile(source_tbl) || isfile(cond_tbl);
-
-if have_any_tbl
-    fprintf('[6/7] Plotting slope vs cord position (full cord)...\n');
-    try
-        run('pt_plot_slope_vs_position.m');
-        fprintf('[6/7] Complete.\n\n');
-    catch err
-        fprintf('WARNING: pt_plot_slope_vs_position failed:\n  %s\n', err.message);
-        fprintf('Continuing...\n\n');
-    end
-else
-    fprintf('[6/7] Skipping pt_plot_slope_vs_position — no trend tables found.\n');
-    fprintf('       Run pt_plot_displacement first.\n\n');
-end
-
-% =========================================================================
-% STEP 7: Summary tables
-% =========================================================================
-
-if have_any_rsq
-    fprintf('[7/7] Computing summary tables...\n');
-    try
-        run('pt_compute_table.m');
-        fprintf('[7/7] Complete.\n\n');
-    catch err
-        fprintf('WARNING: pt_compute_table failed:\n  %s\n', err.message);
-        fprintf('Continuing...\n\n');
-    end
-else
-    fprintf('[7/7] Skipping pt_compute_table — no r² files found.\n\n');
-end
-
-% =========================================================================
-% STEP 8 (OPTIONAL): Cross-perturbation and cross-modality comparison
-% =========================================================================
-% Configure msg_results_path (and optionally esg_results_path) inside
-% pt_compare_perturbations.m before running the full pipeline.
-
-if have_any_rsq
-    fprintf('[8/?] Cross-perturbation / MSG vs ESG comparison...\n');
-    fprintf('      (configure paths in pt_compare_perturbations.m)\n');
-    try
-        run('pt_compare_perturbations.m');
-        fprintf('[8/?] Complete.\n\n');
-    catch err
-        fprintf('WARNING: pt_compare_perturbations failed:\n  %s\n', err.message);
-        fprintf('Continuing...\n\n');
-    end
-else
-    fprintf('[8/?] Skipping pt_compare_perturbations — no r² files found.\n\n');
-end
+pt_modality('clear');
+fprintf('\n==================================================\n');
+fprintf('  COMBINED: cross-perturbation / MSG vs ESG\n');
+fprintf('==================================================\n\n');
+run_compare();   % isolated in a local function so its clearvars can't wipe this workspace
 
 fprintf('=========================================\n');
 fprintf('  Perturbation analysis pipeline complete.\n');
-fprintf('  Figures saved to: %s\n', fullfile(save_base_dir, 'perturbation_analysis'));
+fprintf('  Ran modalities: %s\n', strjoin(mods_to_run, ', '));
 fprintf('=========================================\n');
+
+
+% -------------------------------------------------------------------------
+% Local function: run the combined comparison in its own workspace, so the
+% clearvars inside pt_compare_perturbations cannot clear the master's loop
+% state (mods_to_run) needed for the final summary.
+% -------------------------------------------------------------------------
+function run_compare()
+    try
+        run('pt_compare_perturbations.m');
+        fprintf('Combined comparison complete.\n\n');
+    catch err
+        fprintf('WARNING: pt_compare_perturbations failed:\n  %s\nContinuing...\n\n', ...
+            err.message);
+    end
+end

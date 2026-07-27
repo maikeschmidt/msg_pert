@@ -85,20 +85,103 @@
 
 
 % =========================================================================
-% USER CONFIGURATION — set these paths before running any script
+% USER CONFIGURATION — both modalities in one place (no switching)
 % =========================================================================
+% MSG and ESG are configured side by side here. The pipeline loops over both
+% (run_perturbation_analysis), so you do NOT edit paths or flags between
+% modalities. Each modality carries its own geometry + leadfield paths, method
+% flags, sensor-axis count, and results (figures) folder. A third path holds the
+% combined MSG-vs-ESG comparison.
+%
+% Make sure config_pert's own folder is on the path so pt_modality is found.
+cfg_dir = fileparts(mfilename('fullpath'));
+if ~isempty(cfg_dir); addpath(cfg_dir); end
 
-geoms_path           = 'D:\Simulations\Pertubations\geometries';   % SET THIS: path to original geometry .mat file
-perturbed_geoms_path = 'D:\Simulations\Pertubations\geometries';   % SET THIS: output path for perturbed geometry files
-forward_fields_base  = 'D:\Simulations\Pertubations\fields\mag';       % SET THIS: path to leadfield .mat files (from msg_fwd)
-save_base_dir        = 'D:\Simulations\Pertubations\results';      % SET THIS: base path for figures and tables
+base_geom_name = 'original';   % SET THIS: short stem in file names, WITHOUT the
+                               % leading 'geometries_' prefix (shared by both
+                               % modalities). Default dataset: 'original'.
 
-base_geom_name       = 'original';   % SET THIS: short stem used in file names,
-                             %   WITHOUT the leading 'geometries_' prefix.
-                             %   e.g. if files are named
-                             %     leadfield_geometries_sub001_source_original_bslaw_back.mat
-                             %   set base_geom_name = 'sub001'
-                             %   For the default dataset: base_geom_name = 'original'
+% ---- MSG (triaxial magnetometer array) ----------------------------------
+mods_cfg.msg.geoms_path           = 'D:\Simulations\Pertubations\geometries';         % SET THIS
+mods_cfg.msg.perturbed_geoms_path = 'D:\Simulations\Pertubations\geometries';         % SET THIS
+mods_cfg.msg.forward_fields_base  = 'D:\Simulations\Pertubations\fields\mag';         % SET THIS (holds pert_*_rsq.mat + leadfields_organised.mat)
+mods_cfg.msg.bem_path             = 'D:\Simulations\Pertubations\fields\mag\bem';      % SET THIS
+mods_cfg.msg.bslaw_path           = 'D:\Simulations\Pertubations\fields\mag\bs_law';  % SET THIS
+mods_cfg.msg.fem_path             = 'D:\Simulations\Pertubations\fields\mag';         % SET THIS
+mods_cfg.msg.sphere_path          = '';                                               % SET THIS (optional)
+mods_cfg.msg.bem_cond_path        = 'D:\Simulations\Pertubations\fields\mag\bem_cond_msg'; % SET THIS
+mods_cfg.msg.save_base_dir        = 'D:\Simulations\Pertubations\results\msg';        % SET THIS: MSG figures/tables
+mods_cfg.msg.sensor_n_axes        = 3;
+mods_cfg.msg.sensor_is_meg        = true;
+mods_cfg.msg.have_bem             = true;
+mods_cfg.msg.have_fem             = false;
+mods_cfg.msg.have_bslaw           = true;
+mods_cfg.msg.have_sphere          = false;
+mods_cfg.msg.have_bem_cond        = true;
+
+% ---- ESG (tangential/radial surface electrodes) -------------------------
+mods_cfg.esg.geoms_path           = 'D:\Simulations\Pertubations\geoms_elec';         % SET THIS
+mods_cfg.esg.perturbed_geoms_path = 'D:\Simulations\Pertubations\geoms_elec';         % SET THIS
+mods_cfg.esg.forward_fields_base  = 'D:\Simulations\Pertubations\fields\elec';        % SET THIS
+mods_cfg.esg.bem_path             = 'D:\Simulations\Pertubations\fields\elec\bem_elec';    % SET THIS
+mods_cfg.esg.bslaw_path           = '';                                               % Biot-Savart is magnetic — N/A for ESG
+mods_cfg.esg.fem_path             = 'D:\Simulations\Pertubations\fields\elec';        % SET THIS
+mods_cfg.esg.sphere_path          = '';
+mods_cfg.esg.bem_cond_path        = 'D:\Simulations\Pertubations\fields\elec\bem_cond_esg'; % SET THIS
+mods_cfg.esg.save_base_dir        = 'D:\Simulations\Pertubations\results\esg';        % SET THIS: ESG figures/tables
+mods_cfg.esg.sensor_n_axes        = 2;
+mods_cfg.esg.sensor_is_meg        = false;
+mods_cfg.esg.have_bem             = true;
+mods_cfg.esg.have_fem             = false;
+mods_cfg.esg.have_bslaw           = false;   % no Biot-Savart for ESG
+mods_cfg.esg.have_sphere          = false;
+mods_cfg.esg.have_bem_cond        = true;
+
+% ---- Combined (MSG vs ESG comparison output) ----------------------------
+combined_results_dir = 'D:\Simulations\Pertubations\results\combined';   % SET THIS
+
+% Which modalities the master loop should run
+pert_modalities = {'msg', 'esg'};   % SET THIS: e.g. {'msg'} to run MSG only
+
+
+% =========================================================================
+% ACTIVATE THE SELECTED MODALITY
+% =========================================================================
+% The active modality is chosen by pt_modality (set by run_perturbation_analysis
+% as it loops). For standalone runs of a single script it falls back to 'msg' —
+% or force it here / call pt_modality('set','esg') before running.
+active_modality = pt_modality('get');
+if isempty(active_modality); active_modality = 'msg'; end
+if ~isfield(mods_cfg, active_modality)
+    error('config_pert: no configuration for modality ''%s''.', active_modality);
+end
+M = mods_cfg.(active_modality);
+
+geoms_path           = M.geoms_path;
+perturbed_geoms_path = M.perturbed_geoms_path;
+forward_fields_base  = M.forward_fields_base;
+save_base_dir        = M.save_base_dir;
+bem_path             = M.bem_path;
+bslaw_path           = M.bslaw_path;
+fem_path             = M.fem_path;
+sphere_path          = M.sphere_path;
+bem_cond_path        = M.bem_cond_path;
+sensor_n_axes        = M.sensor_n_axes;
+sensor_is_meg        = M.sensor_is_meg;
+have_bem             = M.have_bem;
+have_fem             = M.have_fem;
+have_bslaw           = M.have_bslaw;
+have_sphere          = M.have_sphere;
+have_bem_cond        = M.have_bem_cond;
+
+% BEM raw output is T/nAm for MSG, V/nAm for ESG — scale to the reporting unit.
+% (r² and heatmaps are scale-invariant; this only affects absolute-amplitude
+% outputs.) Set to 1 if your ESG pipeline already saved microvolts.
+if sensor_is_meg
+    bem_unit_scale = 1e15;   % T/nAm -> fT/nAm
+else
+    bem_unit_scale = 1e6;    % V/nAm -> uV/nAm
+end
 
 
 % =========================================================================
