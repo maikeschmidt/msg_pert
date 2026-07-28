@@ -386,8 +386,16 @@ cond_bundle_colors = [
 %   'bem'    — Boundary Element Method
 %   'fem'    — Finite Element Method
 
-fwd_methods       = {'bslaw', 'bem'};   % SET THIS: methods to compare
-fwd_method_labels = {'Biot-Savart','BEM'};   % SET THIS
+% Methods to compare, PER MODALITY. ESG has no Biot-Savart (that is a magnetic
+% model), so the ESG list is BEM only — otherwise the analysis would look for
+% bslaw_ ESG leadfields that do not exist.
+if sensor_is_meg
+    fwd_methods       = {'bslaw', 'bem'};   % SET THIS: MSG methods
+    fwd_method_labels = {'Biot-Savart', 'BEM'};
+else
+    fwd_methods       = {'bem'};            % ESG: BEM only
+    fwd_method_labels = {'BEM'};
+end
 
 fwd_method_colors = [
     0.80, 0.15, 0.10;   % bslaw  — red
