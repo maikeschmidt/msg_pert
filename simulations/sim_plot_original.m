@@ -163,6 +163,7 @@ for o = 1:n_ori
         end
         xlabel(ax, 'Distance along cord (mm)'); ylabel(ax, 'r^2');
         ylim(ax, [0, 1.02]); xlim(ax, [src_mm(1), src_mm(end)]);
+        xticks(ax, 0:100:ceil(src_mm(end)/100)*100);   % 100 mm spacing
         grid(ax, 'on'); box(ax, 'on');
         title(ax, sprintf('%s — %s', S(k).label, sim_ori_display{o}), ...
             'FontWeight', 'bold', 'FontSize', 10);

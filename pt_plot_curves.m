@@ -133,7 +133,7 @@ if run_source
                     y_lo = max(0,    floor(min(tile_rsq(:))*100)/100 - 0.01);
                     y_hi = min(1.05, ceil(max(tile_rsq(:))*100)/100 + 0.01);
                     ylim(ax, [y_lo, y_hi]);
-                    xticks(ax, 0:20:ceil(distances(end)));
+                    xticks(ax, 0:100:ceil(distances(end)));
                     grid(ax, 'on');
                     set(ax, 'FontSize', 11, 'LineWidth', 1.0, 'TickDir', 'out');
 
@@ -201,7 +201,7 @@ if run_source
                 y_lo = max(0,    floor(min(all_tile(:))*100)/100 - 0.01);
                 y_hi = min(1.05, ceil(max(all_tile(:))*100)/100 + 0.01);
                 ylim(ax, [y_lo, y_hi]);
-                xticks(ax, 0:20:ceil(distances(end)));
+                xticks(ax, 0:100:ceil(distances(end)));
                 grid(ax, 'on');
                 set(ax, 'FontSize', 11, 'LineWidth', 1.0, 'TickDir', 'out');
                 title(ax, orientation_display{ori_idx}, 'FontSize', 12);
@@ -286,7 +286,7 @@ if run_source
                 y_hi = min(1.05, ceil(max(all_tile(:))*100)/100 + 0.01);
                 ylim(ax, [y_lo, y_hi]);
             end
-            xticks(ax, 0:20:ceil(distances(end)));
+            xticks(ax, 0:100:ceil(distances(end)));
             grid(ax, 'on');
             set(ax, 'FontSize', 11, 'LineWidth', 1.0, 'TickDir', 'out');
             title(ax, orientation_display{ori_idx}, 'FontSize', 12);
@@ -389,7 +389,7 @@ if run_sensor
                     y_lo = max(0,   floor(min(tile_rsq(:)) * 100) / 100 - 0.01);
                     y_hi = min(1.05, ceil(max(tile_rsq(:)) * 100) / 100 + 0.01);
                     ylim(ax, [y_lo, y_hi]);
-                    xticks(ax, 0:20:ceil(distances(end)));
+                    xticks(ax, 0:100:ceil(distances(end)));
                     grid(ax, 'on');
                     set(ax, 'FontSize', 11, 'LineWidth', 1.0, 'TickDir', 'out');
 
@@ -470,7 +470,7 @@ if run_sensor
                 y_lo = max(0,   floor(min(tile_rsq(:)) * 100) / 100 - 0.01);
                 y_hi = min(1.05, ceil(max(tile_rsq(:)) * 100) / 100 + 0.01);
                 ylim(ax, [y_lo, y_hi]);
-                xticks(ax, 0:20:ceil(distances(end)));
+                xticks(ax, 0:100:ceil(distances(end)));
                 grid(ax, 'on');
                 set(ax, 'FontSize', 11, 'LineWidth', 1.0, 'TickDir', 'out');
                 title(ax, orientation_display{ori_idx}, 'FontSize', 12);
@@ -559,7 +559,7 @@ if run_sensor
                 y_lo = max(0,   floor(min(tile_rsq(:)) * 100) / 100 - 0.01);
                 y_hi = min(1.05, ceil(max(tile_rsq(:)) * 100) / 100 + 0.01);
                 ylim(ax, [y_lo, y_hi]);
-                xticks(ax, 0:20:ceil(distances(end)));
+                xticks(ax, 0:100:ceil(distances(end)));
                 grid(ax, 'on');
                 set(ax, 'FontSize', 11, 'LineWidth', 1.0, 'TickDir', 'out');
                 title(ax, orientation_display{ori_idx}, 'FontSize', 12);
@@ -655,7 +655,7 @@ if run_cond
                 y_lo = max(0,    floor(min(tile_rsq(:))*100)/100 - 0.01);
                 y_hi = min(1.05, ceil(max(tile_rsq(:))*100)/100 + 0.01);
                 ylim(ax, [y_lo, y_hi]);
-                xticks(ax, 0:20:ceil(distances(end)));
+                xticks(ax, 0:100:ceil(distances(end)));
                 grid(ax, 'on');
                 set(ax, 'FontSize', 11, 'LineWidth', 1.0, 'TickDir', 'out');
 
@@ -729,7 +729,7 @@ if run_cond
             y_lo = max(0,    floor(min(all_tile(:))*100)/100 - 0.01);
             y_hi = min(1.05, ceil(max(all_tile(:))*100)/100 + 0.01);
             ylim(ax, [y_lo, y_hi]);
-            xticks(ax, 0:20:ceil(distances(end)));
+            xticks(ax, 0:100:ceil(distances(end)));
             grid(ax, 'on');
             set(ax, 'FontSize', 11, 'LineWidth', 1.0, 'TickDir', 'out');
             title(ax, orientation_display{ori_idx}, 'FontSize', 12);

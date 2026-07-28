@@ -128,18 +128,19 @@ bundle_display = {'Small', 'Medium', 'Large'};
 cord_position_mm = 10:5:560;   % SET THIS to match your source grid
 
 % Figure colours
+%   Source vs sensor comparison  -> orange / blue
+%   MSG vs ESG comparison        -> purple / green
+% Using two distinct colour pairs keeps the two comparison families visually
+% separate when their figures sit side by side.
 col_source = [0.90 0.55 0.10];   % orange — source-position perturbation
 col_sensor = [0.25 0.50 0.80];   % blue   — sensor-array perturbation
 col_cond   = [0.35 0.70 0.45];
-col_MSG    = [0.25 0.50 0.80];   % used for MSG-vs-ESG box plots + dumbbells
-col_ESG    = [0.80 0.50 0.20];
-% MSG-vs-ESG heatmaps and cord-position figures use a SEPARATE purple/teal
-% pair rather than col_MSG/col_ESG, because col_MSG happens to equal
-% col_sensor (both blue) — using the same blue for "sensor" in one figure
-% and "MSG" in another would be confusing when the two figure families sit
-% side by side. Box plots and dumbbells keep col_MSG/col_ESG unchanged.
-col_MSG_spatial = [0.31 0.29 0.65];   % purple
-col_ESG_spatial = [0.06 0.44 0.35];   % teal
+
+col_MSG    = [0.49 0.18 0.56];   % purple — MSG  (box plots + dumbbells)
+col_ESG    = [0.20 0.63 0.35];   % green  — ESG
+% MSG-vs-ESG heatmaps and cord-position figures use the same purple/green pair.
+col_MSG_spatial = col_MSG;   % purple
+col_ESG_spatial = col_ESG;   % green
 
 % Publication figure defaults
 pub_lw = 1.2;
@@ -678,8 +679,10 @@ for mod_idx = 1:2
             bc = boxchart(ax_tile, categorical(gb_all, bundle_display), y_all, ...
                 'GroupByColor', categorical(gc_all, {'Source', 'Sensor'}), ...
                 'BoxFaceAlpha', 0.7, 'LineWidth', pub_lw, 'MarkerSize', 3);
-            bc(1).BoxFaceColor = col_source;
-            if numel(bc) > 1; bc(2).BoxFaceColor = col_sensor; end
+            bc(1).BoxFaceColor = col_source;  bc(1).MarkerColor = col_source;
+            if numel(bc) > 1
+                bc(2).BoxFaceColor = col_sensor;  bc(2).MarkerColor = col_sensor;
+            end
 
             if show_significance_on_boxplots
                 for b = 1:numel(bundle_display)
@@ -771,8 +774,10 @@ for pt = 1:size(pert_info, 1)
             bc = boxchart(ax_tile, categorical(gb_all, bundle_display), y_all, ...
                 'GroupByColor', categorical(gc_all, {'MSG', 'ESG'}), ...
                 'BoxFaceAlpha', 0.7, 'LineWidth', pub_lw, 'MarkerSize', 3);
-            bc(1).BoxFaceColor = cols{1};
-            if numel(bc) > 1; bc(2).BoxFaceColor = cols{2}; end
+            bc(1).BoxFaceColor = cols{1};  bc(1).MarkerColor = cols{1};
+            if numel(bc) > 1
+                bc(2).BoxFaceColor = cols{2};  bc(2).MarkerColor = cols{2};
+            end
 
             if show_significance_on_boxplots
                 for b = 1:numel(bundle_display)
@@ -1401,6 +1406,8 @@ function plot_cord_position_significance(cord_plot_data, pd_key, title_label, ..
                     title(ax_t, sprintf('%s | axis %d', ori, ax), 'FontSize', 10);
                     xlabel(ax_t, 'Cord position (mm)', 'FontSize', 8);
                     ylabel(ax_t, '\x0394 r²', 'FontSize', 8);
+                    xl = xlim(ax_t);
+                    xticks(ax_t, 0:100:ceil(xl(2)/100)*100);   % 100 mm spacing
                     box(ax_t, 'on');
                 end
             end

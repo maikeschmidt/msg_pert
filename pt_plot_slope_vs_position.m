@@ -195,6 +195,8 @@ function plot_slope_mode(tbl_file, rsq_file, save_dir, mode_name, ...
             xlabel(ax_panel, 'Distance along the spinal cord (mm)', 'FontSize', 11);
             grid(ax_panel, 'on');
             set(ax_panel, 'FontSize', 11, 'LineWidth', 1.2, 'TickDir', 'out');
+            xl = xlim(ax_panel);
+            xticks(ax_panel, 0:100:ceil(xl(2)/100)*100);   % 100 mm spacing
             hold(ax_panel, 'off');
         end
 
