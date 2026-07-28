@@ -98,25 +98,9 @@ pt_modality('clear');
 fprintf('\n==================================================\n');
 fprintf('  COMBINED: cross-perturbation / MSG vs ESG\n');
 fprintf('==================================================\n\n');
-run_compare();   % isolated in a local function so its clearvars can't wipe this workspace
+pt_run_compare();   % function file: isolates its clearvars, callable interactively too
 
 fprintf('=========================================\n');
 fprintf('  Perturbation analysis pipeline complete.\n');
 fprintf('  Ran modalities: %s\n', strjoin(mods_to_run, ', '));
 fprintf('=========================================\n');
-
-
-% -------------------------------------------------------------------------
-% Local function: run the combined comparison in its own workspace, so the
-% clearvars inside pt_compare_perturbations cannot clear the master's loop
-% state (mods_to_run) needed for the final summary.
-% -------------------------------------------------------------------------
-function run_compare()
-    try
-        run('pt_compare_perturbations.m');
-        fprintf('Combined comparison complete.\n\n');
-    catch err
-        fprintf('WARNING: pt_compare_perturbations failed:\n  %s\nContinuing...\n\n', ...
-            err.message);
-    end
-end
