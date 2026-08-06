@@ -156,9 +156,9 @@ if run_source
 
                 % RE (top row)
                 hax = nexttile(tl, ori_idx);
-                draw_heatmap(hax, re_cell.(ori) * 100, item_labels, ...
+                draw_heatmap(hax, re_cell.(ori), item_labels, ...
                     [odsp '  —  RE (%)'], cool, ...
-                    [0, max_nonnan(re_cell.(ori)) * 100], 'RE (%)', ...
+                    [0, max_nonnan(re_cell.(ori))], 'RE (%)', ...
                     src_within_seps, '%.1f');
 
                 % r² (bottom row)
@@ -259,9 +259,9 @@ if run_source
             odsp = orientation_display{ori_idx};
 
             hax = nexttile(tl, ori_idx);
-            draw_heatmap(hax, re_cell.(ori) * 100, lbl_all, ...
+            draw_heatmap(hax, re_cell.(ori), lbl_all, ...
                 [odsp '  —  RE (%)'], cool, ...
-                [0, max_nonnan(re_cell.(ori)) * 100], 'RE (%)', ...
+                [0, max_nonnan(re_cell.(ori))], 'RE (%)', ...
                 method_sep, '%.1f');
 
             hax = nexttile(tl, n_ori + ori_idx);
@@ -359,9 +359,9 @@ if run_sensor
                 odsp = orientation_display{ori_idx};
 
                 hax = nexttile(tl, ori_idx);
-                draw_heatmap(hax, re_cell.(ori) * 100, item_labels, ...
+                draw_heatmap(hax, re_cell.(ori), item_labels, ...
                     [odsp '  —  RE (%)'], cool, ...
-                    [0, max_nonnan(re_cell.(ori)) * 100], 'RE (%)', ...
+                    [0, max_nonnan(re_cell.(ori))], 'RE (%)', ...
                     sen_within_seps, '%.1f');
 
                 hax = nexttile(tl, n_ori + ori_idx);
@@ -458,9 +458,9 @@ if run_sensor
             odsp = orientation_display{ori_idx};
 
             hax = nexttile(tl, ori_idx);
-            draw_heatmap(hax, re_cell.(ori) * 100, lbl_all, ...
+            draw_heatmap(hax, re_cell.(ori), lbl_all, ...
                 [odsp '  —  RE (%)'], cool, ...
-                [0, max_nonnan(re_cell.(ori)) * 100], 'RE (%)', ...
+                [0, max_nonnan(re_cell.(ori))], 'RE (%)', ...
                 method_sep, '%.1f');
 
             hax = nexttile(tl, n_ori + ori_idx);
@@ -548,9 +548,9 @@ if run_cond
             odsp = orientation_display{ori_idx};
 
             hax = nexttile(tl, ori_idx);
-            draw_heatmap(hax, re_cell.(ori) * 100, item_labels, ...
+            draw_heatmap(hax, re_cell.(ori), item_labels, ...
                 [odsp '  —  RE (%)'], cool, ...
-                [0, max_nonnan(re_cell.(ori)) * 100], 'RE (%)', ...
+                [0, max_nonnan(re_cell.(ori))], 'RE (%)', ...
                 cond_within_seps, '%.1f');
 
             hax = nexttile(tl, n_ori + ori_idx);
@@ -729,18 +729,12 @@ end
 
 function [re_val, cc_val] = pairwise_re_cc(La, Lb)
 % Median RE and r² between two [n_sensors x n_sources] matrices.
-    n_src = size(La, 2);
-    e     = zeros(1, n_src);
-    c     = zeros(1, n_src);
-    for s = 1:n_src
-        va   = La(:, s);
-        vb   = Lb(:, s);
-        e(s) = norm(vb - va, 1) / (norm(va, 1) + norm(vb, 1));
-        tmp  = corrcoef(va, vb);
-        c(s) = tmp(1, 2)^2;
-    end
-    re_val = median(e, 'omitnan');
-    cc_val = median(c, 'omitnan');
+% Delegates to msg_fwd/functions/lf_metrics_series so msg_pert uses
+% exactly the same definitions as msg_fwd. La is the reference (Eq 13 L1).
+% re_val is returned in PERCENT — do not rescale at the call site.
+    M      = lf_metrics_series(La, Lb, metric_defaults());
+    re_val = median(M.re,  'omitnan');
+    cc_val = median(M.rsq, 'omitnan');
 end
 
 

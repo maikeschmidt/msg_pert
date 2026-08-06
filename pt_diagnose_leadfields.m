@@ -96,6 +96,12 @@ for c = 1:numel(checks)
         vb = leadfields.(pk).(ori){1, mid};
         md = max(abs(vb - va));
         if numel(va) >= 2
+            % DELIBERATELY raw corrcoef, NOT lf_metrics. This is a
+            % diagnostic whose job is to independently sanity-check the
+            % pipeline (e.g. spotting that a 2-sensor axis forces r2 = 1).
+            % Routing it through the shared metric code would make it
+            % agree with the pipeline by construction and destroy its
+            % value as a cross-check.
             cc = corrcoef(va, vb); r2 = cc(1,2)^2;
         else
             r2 = NaN;

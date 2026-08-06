@@ -261,15 +261,24 @@ function rsq_store = compute_rsq(leadfields, ref_key, valid_keys, ...
     for ori_idx = 1:numel(orientation_labels)
         ori_label = orientation_labels{ori_idx};
         rsq_mat   = nan(n_valid, n_src_plot, n_axes);
+        % Metrics come from msg_fwd/functions/lf_metrics via
+        % lf_metrics_series, so msg_pert r² is identical in definition to
+        % msg_fwd r². The unperturbed reference is the Eq 13 L1 reference.
+        mopts = metric_defaults();
         for ax = 1:n_axes
+            LA = zeros(min_sensors, n_src_plot);
+            for si = 1:n_src_plot
+                LA(:, si) = leadfields.(ref_key).(ori_label){ax, src_range(si)}(1:min_sensors);
+            end
+
             for i = 1:n_valid
+                LB = zeros(min_sensors, n_src_plot);
                 for si = 1:n_src_plot
-                    src_idx = src_range(si);
-                    vecA    = leadfields.(ref_key).(ori_label){ax, src_idx}(1:min_sensors);
-                    vecB    = leadfields.(valid_keys{i}).(ori_label){ax, src_idx}(1:min_sensors);
-                    tmp     = corrcoef(vecA, vecB);
-                    rsq_mat(i, si, ax) = tmp(1, 2)^2;
+                    LB(:, si) = leadfields.(valid_keys{i}).(ori_label){ax, src_range(si)}(1:min_sensors);
                 end
+
+                M = lf_metrics_series(LA, LB, mopts);
+                rsq_mat(i, :, ax) = M.rsq;
             end
         end
         rsq_store.(ori_label) = rsq_mat;
