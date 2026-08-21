@@ -10,10 +10,10 @@
 %   much does *sensor noise* degrade the measurable field, and does that
 %   degradation differ between SQUID-MSG, OP-MSG, and ESG?
 %
-%   Motivating hypothesis: BEM MSG produces highly individualised, spatially
-%   sharp field maps, whereas Biot-Savart MSG and BEM ESG produce smoother,
-%   more diffuse maps. Smoother maps should be more robust to both model error
-%   and sensor noise. sim_plot_topoplots visualises that claim directly.
+%   The two questions are linked: a model whose field maps are spatially
+%   sharp has more to lose from both model error and sensor noise than one
+%   whose maps are smooth and diffuse. sim_plot_topoplots shows the maps
+%   themselves so that comparison can be made by eye.
 %
 % VARIABLES DEFINED:
 %   Paths:

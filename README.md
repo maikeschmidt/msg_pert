@@ -24,6 +24,11 @@ Starting from an original geometry file produced by `msg_coreg`, msg_pert
 generates three sets of perturbed configurations and provides the tools to
 analyse the resulting forward fields once they have been computed in `msg_fwd`.
 
+Two **modalities** are supported side by side: **MSG** (triaxial magnetometer
+array) and **ESG** (tangential/radial surface electrodes). Both are configured
+in one place and the analysis pipeline loops over them, so nothing has to be
+edited between modalities. A final combined stage compares the two directly.
+
 ### Perturbation types
 
 | Type | What is perturbed | What stays fixed | Configurations |
@@ -121,7 +126,10 @@ msg_pert/
 │                                    (conductivity leadfields come from
 │                                     msg_fwd/run_conductivity_perturbation.m)
 │
-├── run_perturbation_analysis.m    — PHASE 2: master analysis script
+├── run_perturbation_analysis.m    — PHASE 2: master script, loops over modalities
+├── pt_modality.m                  — holds the active modality (MSG / ESG)
+├── pt_run_one_modality.m          — runs the 7 analysis steps for one modality
+├── pt_run_compare.m               — runs the combined MSG-vs-ESG comparison
 ├── pt_load_leadfields.m           — load + organise all leadfields (incl. BEM-cond)
 ├── pt_compute_rsq.m               — per-source r² (source, sensor, conductivity)
 ├── pt_plot_curves.m               — r² vs cord distance figures
@@ -129,7 +137,8 @@ msg_pert/
 ├── pt_plot_displacement.m         — displacement / % change vs r²
 ├── pt_plot_slope_vs_position.m    — slope of r² change vs cord position
 ├── pt_compute_table.m             — summary tables (.txt and .csv)
-├── pt_compare_perturbations.m     — cross-perturbation comparison utilities
+├── pt_compare_perturbations.m     — cross-perturbation and MSG-vs-ESG statistics
+├── pt_diagnose_leadfields.m       — inspect a loaded leadfield set when results look wrong
 │
 ├── simulations/                   — self-contained realistic-measurement package
 │   ├── run_simulation_analysis.m  — master script (6 steps)
@@ -140,7 +149,9 @@ msg_pert/
 │   ├── sim_plot_worstcase.m       — systems compared under the largest shift
 │   ├── sim_plot_topoplots.m       — perfect-field topoplots per model
 │   ├── sim_plot_noise_topoplot.m  — measured (noisy) topoplot at a chosen source
-│   ├── functions/                 — sim helpers (load, positions, closed-form r²)
+│   ├── functions/                 — sim helpers: sim_load_leadfield,
+│   │                                sim_sensor_positions, sim_geom_file,
+│   │                                sim_lf_path, sim_evoked_noise_rsq
 │   └── README.md
 │
 └── README.md
@@ -177,17 +188,31 @@ msg_pert/
 pt_add_functions;   % adds msg_pert to path; checks msg_coreg, msg_fwd, HBF
 ```
 
-### Step 2: Configure paths
+### Step 2: Configure
 
-Edit `config_pert.m` and set the four path variables and `base_geom_name`:
+Everything is set in `config_pert.m`. Paths, sensor description and method
+availability are declared **per modality**, in one block each:
 
 ```matlab
-geoms_path           = 'D:\my_study\geometries';       % original geometry .mat
-perturbed_geoms_path = 'D:\my_study\pert_geometries';  % output for shifted files
-forward_fields_base  = 'D:\my_study\leadfields';       % msg_fwd leadfield output
-save_base_dir        = 'D:\my_study\figures';          % figures and tables
-base_geom_name       = 'geometries_sub001_experimental';
+base_geom_name = 'original';   % short stem in file names, WITHOUT the
+                               % leading 'geometries_' prefix
+
+mods_cfg.msg.geoms_path           = '';   % original geometry .mat
+mods_cfg.msg.perturbed_geoms_path = '';   % output for shifted geometry files
+mods_cfg.msg.forward_fields_base  = '';   % msg_fwd leadfield output
+mods_cfg.msg.save_base_dir        = '';   % figures and tables
+mods_cfg.msg.sensor_n_axes        = 3;    % 3 = triaxial MSG
+mods_cfg.msg.sensor_is_meg        = true;
+mods_cfg.msg.have_bem             = true; % which forward models you computed
+% ... and the same block again for mods_cfg.esg (sensor_n_axes = 2)
+
+combined_results_dir = '';                % MSG-vs-ESG comparison output
+pert_modalities      = {'msg', 'esg'};    % e.g. {'msg'} to run MSG only
 ```
+
+`sensor_n_axes` and `sensor_is_meg` are **declared, not inferred**: an ESG
+electrode count can also be divisible by 3, so guessing would mis-split the
+leadfield.
 
 ### Step 3: Generate source-shift geometries (Phase 1a)
 
@@ -225,28 +250,30 @@ run msg_fwd's own `load_and_organise_leadfields` here.)
 
 ### Step 6: Run perturbation analysis (Phase 2)
 
-Before running, open `pt_load_leadfields.m` and set the `have_<method>` flags
-to match the forward models you computed in msg_fwd:
+Set the `have_<method>` flags for each modality in `config_pert.m` to match the
+forward models you actually computed in msg_fwd:
 
 ```matlab
-have_bem      = true;    % BEM via Helsinki BEM Framework
-have_fem      = false;   % FEM via DUNEuro
-have_bslaw    = false;   % Biot-Savart (infinite space)
-have_sphere   = false;   % Single sphere (Sarvas analytical)
-have_bem_cond = false;   % BEM with perturbed tissue conductivities
+mods_cfg.msg.have_bem      = true;    % BEM via Helsinki BEM Framework
+mods_cfg.msg.have_fem      = false;   % FEM via DUNEuro
+mods_cfg.msg.have_bslaw    = false;   % Biot-Savart (infinite space)
+mods_cfg.msg.have_sphere   = false;   % Single sphere (Sarvas analytical)
+mods_cfg.msg.have_bem_cond = false;   % BEM with perturbed conductivities
 ```
 
-Also set `sensor_n_axes` / `sensor_is_meg` (3/true for MSG, 2/false for ESG) —
-these are declared, not inferred, because an ESG electrode count can be
-divisible by 3 and would otherwise be mis-split.
-
-Then run the full pipeline:
+Then run the full pipeline. It loops over every modality in `pert_modalities`,
+then runs the combined MSG-vs-ESG comparison:
 
 ```matlab
 run_perturbation_analysis;
 ```
 
-Or run individual steps standalone:
+To run one modality's steps standalone, choose it first, then call the steps
+directly:
+
+```matlab
+pt_modality('set', 'msg');   % or 'esg'
+```
 
 ```matlab
 pt_load_leadfields;          % load and organise leadfields (run first)
@@ -269,7 +296,10 @@ pt_compute_table;           % summary tables
 | `config_pert` | — | Shared configuration: paths, source/sensor/conductivity parameters, naming, plot styling |
 | `pt_generate_source_shifts` | 1 | Generate 24 geometry files for 3 bundles × 8 random source-space shifts (~2/5/10 mm) |
 | `pt_generate_sensor_shifts` | 1 | Generate 24 geometry files for 3 bundles × 8 random sensor-array shifts |
-| `run_perturbation_analysis` | 2 | Master script: runs all analysis steps in order |
+| `run_perturbation_analysis` | 2 | Master script: loops over `pert_modalities`, then runs the combined comparison |
+| `pt_modality` | 2 | Get/set the active modality; survives the `clearvars` in each sub-script |
+| `pt_run_one_modality` | 2 | Runs the 7 analysis steps for whichever modality is active |
+| `pt_run_compare` | 2 | Runs the combined MSG-vs-ESG comparison in an isolated workspace |
 | `pt_load_leadfields` | 2 | Load and organise BEM/FEM/BS/sphere + BEM-conductivity leadfields; saves `leadfields_organised.mat` |
 | `pt_compute_rsq` | 2 | Compute per-source r² for source, sensor, and conductivity perturbations vs the original |
 | `pt_plot_curves` | 2 | r² vs cord distance figures (detail, summary, cross-model) for all three modes |
@@ -277,7 +307,8 @@ pt_compute_table;           % summary tables
 | `pt_plot_displacement` | 2 | Displacement (mm) or % conductivity change vs r² (individual: cervical; combined + trend table: full cord) |
 | `pt_plot_slope_vs_position` | 2 | Slope of r² change vs cord position, from the displacement trend tables |
 | `pt_compute_table` | 2 | Write median r², min r², and first-drop thresholds as .txt and .csv |
-| `pt_compare_perturbations` | 2 | Cross-perturbation comparison utilities |
+| `pt_compare_perturbations` | 2 | Source-vs-sensor and MSG-vs-ESG comparisons: permutation tests (aggregate and per cord position, cluster-corrected) plus Wilcoxon for reference |
+| `pt_diagnose_leadfields` | 2 | Inspect a loaded leadfield set — sizes, scales, missing entries — when results look wrong |
 
 ---
 
@@ -307,6 +338,10 @@ See `simulations/README.md` for full detail.
 
 ## Metrics
 
+Metrics are computed by `msg_fwd`'s shared `lf_metrics` implementation, so
+msg_pert numbers and msg_fwd numbers are directly comparable. The unperturbed
+geometry is always the reference.
+
 **r² (squared Pearson correlation)**
 
 Computed per source position by comparing the full leadfield vector of the
@@ -324,6 +359,11 @@ Edges (first and last source) are excluded.
 **Threshold conventions:**
 - r² < 0.99 — first position where the perturbation has a measurable effect
 - r² < 0.95 — first position where the effect is practically significant
+
+**RE (relative error)** is also reported, in the pairwise heatmaps and summary
+tables, under the same reference-normalised definition msg_fwd uses:
+`‖L_shifted − L_original‖₂ / ‖L_original‖₂ × 100`. See `msg_fwd/INTERPRETATION.md`
+for how to read RE against r².
 
 ---
 
@@ -344,12 +384,8 @@ relative to the sensor array; a +Z shift moves the cord superior.
 
 ## Citation
 
-If you use this toolbox, please cite:
-
-> Schmidt, M. et al. (2026). *Forward model sensitivity in Magnetospinography.*
-> [Journal TBC] [DOI TBC]
-
-Please also cite the companion toolboxes:
+If you use this toolbox, please cite it along with the companion toolboxes you
+used:
 
 > msg_coreg: https://github.com/maikeschmidt/msg_coreg  
 > msg_fwd:   https://github.com/maikeschmidt/msg_fwd

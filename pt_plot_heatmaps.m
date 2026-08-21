@@ -730,7 +730,7 @@ end
 function [re_val, cc_val] = pairwise_re_cc(La, Lb)
 % Median RE and r² between two [n_sensors x n_sources] matrices.
 % Delegates to msg_fwd/functions/lf_metrics_series so msg_pert uses
-% exactly the same definitions as msg_fwd. La is the reference (Eq 13 L1).
+% exactly the same definitions as msg_fwd. La is the reference.
 % re_val is returned in PERCENT — do not rescale at the call site.
     M      = lf_metrics_series(La, Lb, metric_defaults());
     re_val = median(M.re,  'omitnan');

@@ -4,11 +4,10 @@
 % model in sim_models, so the spatial character of each can be compared
 % directly.
 %
-% This is the figure that tests the smoothness hypothesis: if BEM MSG really
-% is more individualised and spatially sharper than Biot-Savart MSG and BEM
-% ESG, it should be visible here as tighter, more structured field patterns —
-% and that sharpness is the candidate explanation for why BEM MSG turned out
-% MORE sensitive to perturbation, not less.
+% Use it to judge how sharp or diffuse each model's field maps are: a model
+% whose maps are tighter and more structured has more to lose when the
+% geometry is perturbed, so this figure is the visual counterpart to the
+% perturbation sensitivity measured by the pt_* pipeline.
 %
 % USAGE:
 %   sim_plot_topoplots

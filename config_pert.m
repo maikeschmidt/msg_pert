@@ -7,12 +7,27 @@
 % USAGE:
 %   config_pert;
 %
+% MODALITIES:
+%   MSG (triaxial magnetometers) and ESG (surface electrodes) are configured
+%   side by side in mods_cfg. The active one is chosen by pt_modality, which
+%   run_perturbation_analysis sets per iteration, so nothing has to be edited
+%   between modalities. The selected modality's fields are then unpacked into
+%   the loose variables listed below.
+%
 % VARIABLES DEFINED:
-%   Paths:
+%   Paths (per modality):
 %     geoms_path           - Path to original geometry .mat from msg_coreg
 %     perturbed_geoms_path - Output path for perturbed geometry .mat files
 %     forward_fields_base  - Path to leadfield .mat files (from msg_fwd runs)
 %     save_base_dir        - Base path for saving figures and tables
+%     combined_results_dir - Output for the combined MSG-vs-ESG comparison
+%
+%   Sensor description and method availability (per modality):
+%     sensor_n_axes        - 3 for triaxial MSG, 2 for ESG. Declared, not
+%                            inferred: an electrode count can also divide by 3
+%     sensor_is_meg        - true for MSG, false for ESG
+%     have_bem / have_fem / have_bslaw / have_sphere / have_bem_cond
+%                          - which forward models were computed in msg_fwd
 %
 %   Base geometry:
 %     base_geom_name       - Short stem used in leadfield file names,
@@ -339,7 +354,7 @@ sensor_bundle_colors = [
 % Bundle 3 — large  (up to +50%): σ × (1 + U(0, 0.50))
 %
 % Run run_conductivity_perturbation.m (in msg_fwd) to generate the files,
-% then set have_bem_cond = true in pt_load_leadfields.
+% then set have_bem_cond = true for that modality in the block above.
 
 n_cond_bundles        = 3;
 n_cond_shifts         = 8;

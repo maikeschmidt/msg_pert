@@ -8,6 +8,11 @@
 % config_pert and its required .mat files independently, so individual
 % steps can also be run standalone.
 %
+% MODALITIES:
+%   The script loops over the modalities listed in pert_modalities (MSG, ESG,
+%   or both), running the full per-modality analysis for each, then runs the
+%   combined MSG-vs-ESG comparison. No manual switching between modalities.
+%
 % WORKFLOW (two-phase):
 %
 %   Phase 1 — Perturbation generation (run ONCE per study, in msg_fwd):
@@ -36,10 +41,12 @@
 %   run_perturbation_analysis
 %
 % CONFIGURATION:
-%   - Update config_pert.m paths and parameters before running
-%   - Configure which methods are available (BEM/FEM/BS/sphere/BEM-cond)
-%     in pt_load_leadfields.m
-%   - Set n_cond_compartments in config_pert.m to match your BEM geometry
+%   Everything is set in config_pert.m, per modality:
+%   - paths, and which modalities the loop should run (pert_modalities)
+%   - which forward models were computed (have_bem / have_fem / have_bslaw /
+%     have_sphere / have_bem_cond)
+%   - sensor_n_axes and sensor_is_meg
+%   - n_cond_compartments, to match your BEM geometry
 %
 % NOTES:
 %   - Steps 3-7 auto-skip if their required .mat file does not exist

@@ -263,7 +263,7 @@ function rsq_store = compute_rsq(leadfields, ref_key, valid_keys, ...
         rsq_mat   = nan(n_valid, n_src_plot, n_axes);
         % Metrics come from msg_fwd/functions/lf_metrics via
         % lf_metrics_series, so msg_pert r² is identical in definition to
-        % msg_fwd r². The unperturbed reference is the Eq 13 L1 reference.
+        % msg_fwd r². The unperturbed geometry is the reference.
         mopts = metric_defaults();
         for ax = 1:n_axes
             LA = zeros(min_sensors, n_src_plot);
