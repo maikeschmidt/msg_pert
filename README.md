@@ -4,8 +4,8 @@
 generating anatomically shifted geometry files and perturbed tissue
 conductivities, then quantifying the sensitivity of BEM, FEM, Biot-Savart, and
 single-sphere forward models to perturbations in source space, sensor array
-position, and tissue conductivity. Includes a self-contained `simulations/`
-package that adds realistic sensor noise to evoked responses.**
+position, and tissue conductivity — for MSG and ESG side by side, noise-free
+and through realistic sensor noise.**
 
 Developed by **Maike Schmidt** at the **Department of Imaging Neuroscience,
 University College London**.
@@ -55,47 +55,46 @@ model (see `msg_fwd/run_conductivity_perturbation.m`).
 
 ---
 
-## Two-phase workflow
+## Workflow
 
 ```
-Phase 1 — Perturbation generation
+Phase 1 — perturbation generation (once per study)
 
   msg_coreg geometry file
          │
+         ├─ pt_generate_source_shifts   →  24 source-shift geometries
+         ├─ pt_generate_sensor_shifts   →  24 sensor-shift geometries
          ▼
-  pt_generate_source_shifts        →  24 source-shift geometry .mat files
-  pt_generate_sensor_shifts        →  24 sensor-shift geometry .mat files
-                                       (+ shift vectors to paste into config_pert)
-         │
-         │  (run forward models in msg_fwd)
-         ▼
-  msg_fwd: run_bem_leadfields / run_fem_leadfields / Biot-Savart / sphere
-           on each shifted geometry (front + back arrays)
-  msg_fwd: run_conductivity_perturbation  →  24 BEM conductivity leadfields
+  msg_fwd: BEM (MSG + ESG), Biot-Savart (MSG), conductivity perturbation,
+           optional FEM — on every geometry, for the analysed array
          │
          ▼
-  leadfield .mat files (per geometry, per method, per array)
+Phase 2 — staged analysis  (run_perturbation_analysis)
 
-
-Phase 2 — Analysis  (run_perturbation_analysis)
-
-         ├─ pt_load_leadfields      load BEM/FEM/BS/sphere + BEM-cond leadfields
-         │                          for all perturbations → leadfields_organised.mat
-  leadfields_organised.mat
-         │
-         ├─ pt_compute_rsq          r² per source/orientation/method (source, sensor, cond)
-         ├─ pt_plot_curves          r² vs cord distance (detail, summary, cross-model)
-         ├─ pt_plot_heatmaps        pairwise RE and r² heatmaps
-         ├─ pt_plot_displacement    displacement / % change vs r²  (cervical + full cord)
-         ├─ pt_plot_slope_vs_position   slope of r² change vs cord position
-         └─ pt_compute_table        summary tables (.txt and .csv)
-
-
-Optional — Realistic-measurement simulation  (simulations/, see below)
-
-         run_simulation_analysis    evoked response + sensor noise across
-                                    systems (SQUID/OP-MSG/ESG) and geometries
+  0  pt_load_leadfields, pt_compute_metrics   every metric, every perturbation
+  1  pt_baseline            noise-free fields: topoplots, amplitude, model type
+  2  pt_within_modality     MSG: perturbation types and sizes, with statistics
+  3  pt_within_modality     ESG: the same
+  4  pt_compare_modalities  MSG vs ESG under identical perturbations
+  5  pt_noise_simulate      stages 2–4 repeated through realistic sensor noise
+     pt_noise_analyse       (SQUID MSG, OP-MSG, ESG)
+  6  pt_summary_table       every source of error on one scale
 ```
+
+### What each stage answers
+
+| Stage | Question |
+|---|---|
+| 1 | What do Biot-Savart MSG, BEM MSG and BEM ESG predict before anything goes wrong, and how different are two reasonable model types? |
+| 2, 3 | Within one modality: how large is each perturbation, where along the cord, is it an amplitude or a topography change, does it scale with shift size, which type matters most, and does the forward model type change the sensitivity? |
+| 4 | Do MSG and ESG respond differently to the same perturbation, and do they rank the perturbation types differently? |
+| 5 | Once realistic sensor noise is added, which perturbations are still visible, at what noise level do they disappear, and do the stage-4 differences survive? |
+| 6 | Of model type, geometry, conductivity and noise, which dominates? |
+
+Every stage reports the same four metrics (RE, r², RDM and gain from lnMAG)
+and uses the same statistics, so numbers can be compared across stages.
+**[RUN_ORDER.md](RUN_ORDER.md)** says what to run and what it costs;
+**[INTERPRETATION.md](INTERPRETATION.md)** says how to read every output.
 
 ---
 
@@ -117,44 +116,48 @@ Both must be cloned as sibling directories to `msg_pert`.
 
 ```
 msg_pert/
-├── pert_path.m                    — path function (locates repository root)
-├── pt_add_functions.m             — dependency setup (msg_coreg, msg_fwd, HBF)
-├── config_pert.m                  — all paths and perturbation parameters
+├── config_pert.m                  — every path and setting
+├── run_perturbation_analysis.m    — PHASE 2 master: runs stages 0–6
+├── RUN_ORDER.md                   — what to run, in what order, at what cost
+├── INTERPRETATION.md              — how to read every output
 │
-├── pt_generate_source_shifts.m    — PHASE 1: generate 24 source-shift geometries
-├── pt_generate_sensor_shifts.m    — PHASE 1: generate 24 sensor-shift geometries
-│                                    (conductivity leadfields come from
-│                                     msg_fwd/run_conductivity_perturbation.m)
+├── pt_generate_source_shifts.m    — PHASE 1: 24 source-shift geometries
+├── pt_generate_sensor_shifts.m    — PHASE 1: 24 sensor-shift geometries
 │
-├── run_perturbation_analysis.m    — PHASE 2: master script, loops over modalities
-├── pt_modality.m                  — holds the active modality (MSG / ESG)
-├── pt_run_one_modality.m          — runs the 7 analysis steps for one modality
-├── pt_run_compare.m               — runs the combined MSG-vs-ESG comparison
-├── pt_load_leadfields.m           — load + organise all leadfields (incl. BEM-cond)
-├── pt_compute_rsq.m               — per-source r² (source, sensor, conductivity)
-├── pt_plot_curves.m               — r² vs cord distance figures
-├── pt_plot_heatmaps.m             — pairwise RE and r² heatmaps
-├── pt_plot_displacement.m         — displacement / % change vs r²
-├── pt_plot_slope_vs_position.m    — slope of r² change vs cord position
-├── pt_compute_table.m             — summary tables (.txt and .csv)
-├── pt_compare_perturbations.m     — cross-perturbation and MSG-vs-ESG statistics
-├── pt_diagnose_leadfields.m       — inspect a loaded leadfield set when results look wrong
+├── pt_load_leadfields.m           — stage 0: load one array, scale each file, check
+├── pt_compute_metrics.m           — stage 0: RE, r², RDM, lnMAG for every perturbation
+├── pt_baseline.m                  — stage 1: noise-free baseline
+├── pt_within_modality.m           — stages 2/3: within MSG / within ESG
+├── pt_compare_modalities.m        — stage 4: MSG vs ESG
+├── pt_noise_simulate.m            — stage 5a: perturbation + sensor noise
+├── pt_noise_analyse.m             — stage 5b: figures, tables, statistics
+├── pt_summary_table.m             — stage 6: every factor on one scale
 │
-├── simulations/                   — self-contained realistic-measurement package
-│   ├── run_simulation_analysis.m  — master script (6 steps)
-│   ├── config_sim.m               — models, systems, noise floors, geometry list
-│   ├── sim_run_geometries.m       — evoked response + noise, looped over geometries
-│   ├── sim_plot_original.m        — base noise curves for the original geometry
-│   ├── sim_plot_comparison.m      — noise curves overlaid across geometry variants
-│   ├── sim_plot_worstcase.m       — systems compared under the largest shift
-│   ├── sim_plot_topoplots.m       — perfect-field topoplots per model
-│   ├── sim_plot_noise_topoplot.m  — measured (noisy) topoplot at a chosen source
-│   ├── functions/                 — sim helpers: sim_load_leadfield,
-│   │                                sim_sensor_positions, sim_geom_file,
-│   │                                sim_lf_path, sim_evoked_noise_rsq
-│   └── README.md
+├── pt_modality.m                  — holds the active modality between scripts
+├── pt_run_step.m                  — runs a stage in an isolated workspace
+├── pt_add_functions.m, pert_path.m — path setup
+├── pt_diagnose_leadfields.m       — inspect a loaded set when results look wrong
 │
-└── README.md
+├── pt_compute_rsq.m, pt_plot_curves.m, pt_plot_heatmaps.m,
+│   pt_plot_displacement.m, pt_plot_slope_vs_position.m,
+│   pt_compute_table.m, pt_compare_perturbations.m
+│                                  — earlier r²-only outputs (run_legacy = true)
+│
+├── functions/                     — metric, statistics, table and plot helpers
+│   ├── pt_metrics_block.m         — vectorised lf_metrics (identical numbers)
+│   ├── pt_lf_matrix.m             — comparison vectors per orientation / axis set
+│   ├── pt_unit_scale.m            — per-file unit detection
+│   ├── pt_compare_two.m           — paired / unpaired test + effect size
+│   ├── pt_stats_within.m, pt_stats_between.m, pt_fdr_by_group.m
+│   ├── pt_perm_test2.m, pt_cliffs_delta.m, pt_spearman_perm.m
+│   ├── pt_describe.m, pt_quantile.m, pt_shift_summary.m, pt_metric_info.m
+│   └── pt_write_table.m, pt_long_row.m, pt_plot_band.m, pt_save_figure.m, ...
+│
+├── tests/
+│   ├── test_pt_core.m             — metric and statistics core vs known answers
+│   └── test_pt_pipeline.m         — every stage on synthetic lead fields
+│
+└── simulations/                   — standalone noise-simulation package
 ```
 
 ---
@@ -248,122 +251,83 @@ The per-geometry leadfield `.mat` files are the input to Phase 2. (msg_pert
 organises them itself via `pt_load_leadfields` in the next step — you do **not**
 run msg_fwd's own `load_and_organise_leadfields` here.)
 
-### Step 6: Run perturbation analysis (Phase 2)
+### Step 6: Run the analysis (Phase 2)
 
-Set the `have_<method>` flags for each modality in `config_pert.m` to match the
-forward models you actually computed in msg_fwd:
-
-```matlab
-mods_cfg.msg.have_bem      = true;    % BEM via Helsinki BEM Framework
-mods_cfg.msg.have_fem      = false;   % FEM via DUNEuro
-mods_cfg.msg.have_bslaw    = false;   % Biot-Savart (infinite space)
-mods_cfg.msg.have_sphere   = false;   % Single sphere (Sarvas analytical)
-mods_cfg.msg.have_bem_cond = false;   % BEM with perturbed conductivities
-```
-
-Then run the full pipeline. It loops over every modality in `pert_modalities`,
-then runs the combined MSG-vs-ESG comparison:
+Set the `have_<method>` flags per modality in `config_pert.m` to match the
+forward models you computed, set `stage_results_dir`, then:
 
 ```matlab
 run_perturbation_analysis;
 ```
 
-To run one modality's steps standalone, choose it first, then call the steps
-directly:
+Flags at the top of that script run a subset of stages. Any stage can be
+re-run alone once its inputs exist, see [RUN_ORDER.md](RUN_ORDER.md).
+Outputs go to numbered folders under `stage_results_dir`:
 
-```matlab
-pt_modality('set', 'msg');   % or 'esg'
-```
+| Folder | Contents |
+|---|---|
+| `1_baseline` | topoplots, amplitude and focality along the cord, model-type decomposition |
+| `2_within_msg`, `3_within_esg` | decomposition per bundle, dose response, types and methods compared, statistics tables |
+| `4_msg_vs_esg` | headline comparison, effect-size maps, interaction, slopes, along-cord tests |
+| `5_noise` | noise alone, perturbation + noise, detectability, critical noise levels, error budget, systems compared per level |
+| `6_summary` | one ranking of every source of error per modality |
 
-```matlab
-pt_load_leadfields;          % load and organise leadfields (run first)
-pt_compute_rsq;              % r² for source, sensor, conductivity
-pt_plot_curves;              % r² vs cord distance
-pt_plot_heatmaps;           % pairwise RE / r² heatmaps
-pt_plot_displacement;       % displacement / % change vs r²
-pt_plot_slope_vs_position;  % slope of r² vs cord position
-pt_compute_table;           % summary tables
-```
+Every table is written as `.csv` (every orientation and axis set), `.txt`
+(readable) and `.tex` (booktabs; headline orientation, whole array).
 
 ---
 
 ## Script Reference
 
-| Script | Phase | Description |
+| Script | Stage | Description |
 |---|---|---|
-| `pert_path` | — | Returns the absolute path to the msg_pert root directory |
-| `pt_add_functions` | — | Adds msg_pert/functions, msg_coreg, msg_fwd, HBF, and FieldTrip wrappers to the MATLAB path |
-| `config_pert` | — | Shared configuration: paths, source/sensor/conductivity parameters, naming, plot styling |
-| `pt_generate_source_shifts` | 1 | Generate 24 geometry files for 3 bundles × 8 random source-space shifts (~2/5/10 mm) |
-| `pt_generate_sensor_shifts` | 1 | Generate 24 geometry files for 3 bundles × 8 random sensor-array shifts |
-| `run_perturbation_analysis` | 2 | Master script: loops over `pert_modalities`, then runs the combined comparison |
-| `pt_modality` | 2 | Get/set the active modality; survives the `clearvars` in each sub-script |
-| `pt_run_one_modality` | 2 | Runs the 7 analysis steps for whichever modality is active |
-| `pt_run_compare` | 2 | Runs the combined MSG-vs-ESG comparison in an isolated workspace |
-| `pt_load_leadfields` | 2 | Load and organise BEM/FEM/BS/sphere + BEM-conductivity leadfields; saves `leadfields_organised.mat` |
-| `pt_compute_rsq` | 2 | Compute per-source r² for source, sensor, and conductivity perturbations vs the original |
-| `pt_plot_curves` | 2 | r² vs cord distance figures (detail, summary, cross-model) for all three modes |
-| `pt_plot_heatmaps` | 2 | Pairwise RE and r² heatmaps (within- and cross-method) for all three modes |
-| `pt_plot_displacement` | 2 | Displacement (mm) or % conductivity change vs r² (individual: cervical; combined + trend table: full cord) |
-| `pt_plot_slope_vs_position` | 2 | Slope of r² change vs cord position, from the displacement trend tables |
-| `pt_compute_table` | 2 | Write median r², min r², and first-drop thresholds as .txt and .csv |
-| `pt_compare_perturbations` | 2 | Source-vs-sensor and MSG-vs-ESG comparisons: permutation tests (aggregate and per cord position, cluster-corrected) plus Wilcoxon for reference |
-| `pt_diagnose_leadfields` | 2 | Inspect a loaded leadfield set — sizes, scales, missing entries — when results look wrong |
+| `pt_generate_source_shifts` | Phase 1 | 24 geometries: 3 bundles × 8 random source-space shifts |
+| `pt_generate_sensor_shifts` | Phase 1 | 24 geometries: 3 bundles × 8 random sensor-array shifts |
+| `run_perturbation_analysis` | all | Master script: stages 0–6, both modalities |
+| `pt_load_leadfields` | 0 | Load the analysed array for every method and perturbation; per-file unit scaling; magnitude check against each reference |
+| `pt_compute_metrics` | 0 | RE, r², RDM and lnMAG per source, method, orientation and axis set → `pert_metrics.mat` |
+| `pt_baseline` | 1 | Unperturbed topoplots, amplitude and focality along the cord, forward-model-type decomposition |
+| `pt_within_modality` | 2, 3 | Within one modality: descriptive table, decomposition per bundle, dose response, type and method comparisons, along-cord source-vs-sensor test |
+| `pt_compare_modalities` | 4 | MSG vs ESG: descriptive, tests, interaction, dose-response slopes, along-cord tests, effect-size maps |
+| `pt_noise_simulate` | 5 | Every perturbed field measured through trial-averaged sensor noise, scored against the true field |
+| `pt_noise_analyse` | 5 | Noise alone, perturbation + noise, detectability, critical noise level, error budget, system comparisons per level, within-modality tests under noise |
+| `pt_summary_table` | 6 | Every source of error ranked on one scale |
+| `pt_modality` | — | Get/set the active modality; survives each script's `clearvars` |
+| `pt_run_step` | — | Run one script in an isolated workspace |
+| `pt_diagnose_leadfields` | — | Inspect a loaded lead-field set |
 
 ---
 
-## Realistic-measurement simulation (`simulations/`)
+## Standalone noise simulation (`simulations/`)
 
-The perturbation pipeline above asks how the *noise-free* forward field changes
-when the model is wrong. The self-contained `simulations/` package asks the
-complementary question: given the forward field, how much does realistic
-**sensor noise** degrade a measured evoked response, and how does that differ
-between sensor systems and between geometry variants?
-
-It simulates a Gaussian-windowed evoked burst at every source on the cord,
-projects it through a chosen leadfield, adds trial-averaged white sensor noise
-across a sweep of levels, and scores r² against the noise-free field. Three
-systems are compared — **SQUID MSG**, **OP-MSG**, and **ESG** — each with its own
-published noise floor and measurement bandwidth. Because MSG (fT) and ESG (µV)
-noise floors are not comparable in absolute terms, everything is expressed as a
-multiple of each system's own baseline.
-
-Run `simulations/run_simulation_analysis` (configure `simulations/config_sim.m`
-first). Outputs: perfect-field topoplots, per-geometry noise curves, cross-variant
-comparison curves (mean across cord + IQR band), a worst-case system comparison
-(largest shift, scored against the original field), and measured noisy topoplots.
-See `simulations/README.md` for full detail.
+The `simulations/` package predates stage 5 and remains usable on its own. It
+scores the noisy sensor-by-time data matrix with r², for a single
+representative shift per bundle. Stage 5 of the main pipeline asks the same
+question for every realisation with all four metrics and statistics, so
+use stage 5 for results that sit alongside stages 1–4. The noise floors and
+source waveform in `config_pert.m` are copied from `simulations/config_sim.m`;
+keep the two in step if you change either. See `simulations/README.md`.
 
 ---
 
 ## Metrics
 
-Metrics are computed by `msg_fwd`'s shared `lf_metrics` implementation, so
-msg_pert numbers and msg_fwd numbers are directly comparable. The unperturbed
-geometry is always the reference.
+All metrics come from msg_fwd's shared definitions (`lf_metrics`), computed
+here by the vectorised `pt_metrics_block`, which gives identical numbers. The
+unperturbed geometry is always the reference.
 
-**r² (squared Pearson correlation)**
+| Metric | Measures |
+|---|---|
+| RE (%) | `‖L_pert − L_orig‖₂ / ‖L_orig‖₂ × 100`, magnitude and shape |
+| r² | squared Pearson correlation, shape only |
+| RDM | distance between unit-normalised fields, shape only |
+| gain (%) | `(exp(lnMAG) − 1) × 100`, magnitude only |
 
-Computed per source position by comparing the full leadfield vector of the
-shifted model against the unshifted original:
-
-```
-r² = (Pearson r)^2 between shifted and original leadfield at each source
-r² = 1.0 — identical leadfields (no effect of perturbation)
-r² = 0.0 — no correlation
-```
-
-Computed separately per dipole orientation (VD / RC / LR) and sensor axis.
-Edges (first and last source) are excluded.
-
-**Threshold conventions:**
-- r² < 0.99 — first position where the perturbation has a measurable effect
-- r² < 0.95 — first position where the effect is practically significant
-
-**RE (relative error)** is also reported, in the pairwise heatmaps and summary
-tables, under the same reference-normalised definition msg_fwd uses:
-`‖L_shifted − L_original‖₂ / ‖L_original‖₂ × 100`. See `msg_fwd/INTERPRETATION.md`
-for how to read RE against r².
+`RE ≈ √(gain² + (RDM×100)²)`, so every result can be split into an
+amplitude part and a topography part. Statistics treat one perturbation
+realisation as one observation (its median over the cord), use permutation
+tests with rank-biserial or Cliff's δ effect sizes, and are FDR-corrected
+within each family and metric. See [INTERPRETATION.md](INTERPRETATION.md).
 
 ---
 

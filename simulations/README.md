@@ -9,6 +9,16 @@ This is separate from the `pt_*` perturbation pipeline in the parent folder,
 which asks how the *noise-free* forward field changes when the model is wrong.
 Here the model is taken as given and **noise** is the variable.
 
+> **Relation to stage 5 of the main pipeline.** Stage 5
+> (`pt_noise_simulate` / `pt_noise_analyse`) asks the same question for
+> *every* perturbation realisation, scores the recovered field pattern with
+> all four metrics (RE, r², RDM, gain) and adds statistics, so its results sit
+> directly alongside stages 1–4. This package scores the sensor-by-time data
+> matrix with r² for one representative shift per bundle; it remains useful for
+> the measured-topoplot figures and quick single-geometry checks. The noise
+> floors and source waveform are copied into `config_pert.m` — keep the two in
+> step.
+
 ## Pipeline
 
 Run `run_simulation_analysis` (or the steps individually):

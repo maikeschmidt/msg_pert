@@ -24,13 +24,23 @@
 % Email:  maike.schmidt.23@ucl.ac.uk
 
 root = pert_path();
-addpath(root);
-fprintf('msg_pert root added to path: %s\n', root);
+% Added only if absent: re-adding would move the root to the top of the path
+% and shadow a config_pert kept elsewhere on purpose (e.g. a local copy).
+if ~ismember(root, strsplit(path, pathsep))
+    addpath(root);
+end
+fprintf('msg_pert root on path: %s\n', root);
 
-% msg_pert helper functions (sim_load_leadfield, sim_sensor_positions, ...)
+% msg_pert helper functions (metrics, statistics, tables, plotting)
 pert_fns = fullfile(root, 'functions');
 if isfolder(pert_fns)
     addpath(pert_fns);
+end
+
+% simulations/functions supplies sim_sensor_positions (used by pt_baseline)
+sim_fns = fullfile(root, 'simulations', 'functions');
+if isfolder(sim_fns)
+    addpath(sim_fns);
 end
 
 % Check SPM
@@ -45,8 +55,17 @@ coreg_path = fullfile(fileparts(root), 'msg_coreg');
 if isfolder(coreg_path)
     coreg_init = fullfile(coreg_path, 'cr_add_functions.m');
     if exist(coreg_init, 'file')
-        run(coreg_init);
-        fprintf('msg_coreg initialised: %s\n', coreg_path);
+        % Only geometry generation (Phase 1) needs msg_coreg; the analysis
+        % stages do not, so a failed initialisation is reported, not fatal.
+        try
+            run(coreg_init);
+            fprintf('msg_coreg initialised: %s\n', coreg_path);
+        catch err
+            addpath(coreg_path);
+            warning(['pt_add_functions: msg_coreg could not be initialised ' ...
+                '(%s). Geometry generation needs it; the analysis stages do not.'], ...
+                err.message);
+        end
     else
         addpath(coreg_path);
         fprintf('msg_coreg added to path: %s\n', coreg_path);

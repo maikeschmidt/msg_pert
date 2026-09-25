@@ -81,6 +81,24 @@
 %     pub_line_width       - Line width for publication figures (default: 2.0)
 %     pub_marker_size      - Marker size for publication figures (default: 7)
 %
+%   Loading (both modalities):
+%     analysis_array       - 'back' or 'front': the only array loaded
+%     unit_scale_mode      - 'auto' (per-file, from magnitude) or 'fixed'
+%     mods_cfg.<m>.axis_names / axis_slot / radial_axis / sensor_shift_dims
+%                          - sensor axes and how they correspond across modalities
+%
+%   Staged analysis (stages 1-6, see RUN_ORDER.md):
+%     stage_results_dir    - output root; one numbered folder per stage
+%     pert_types, pert_type_display, pert_type_colors, bundle_names
+%     metric_orientations, headline_orientation, ori_titles
+%     stats_n_perm, stats_n_boot, stats_alpha, stats_seed
+%     source_sensor_paired - source and sensor shift k share a shift vector
+%     msg_esg_paired       - per type: is shift k the same change in MSG and ESG
+%     modality_compare_method - forward model used for MSG vs ESG
+%     baseline_models, baseline_pairs, baseline_topo_src_mm   (stage 1)
+%     noise_systems, noise_* waveform and sweep settings        (stage 5)
+%     fig_resolution       - PNG resolution (dpi)
+%
 % NOTES:
 %   - Set the four path variables and base_geom_name before running any script
 %   - base_geom_name must NOT include the 'geometries_' prefix — that prefix
@@ -133,6 +151,12 @@ mods_cfg.msg.have_fem             = false;
 mods_cfg.msg.have_bslaw           = true;
 mods_cfg.msg.have_sphere          = false;
 mods_cfg.msg.have_bem_cond        = true;
+mods_cfg.msg.display              = 'MSG';
+mods_cfg.msg.axis_names           = {'X', 'Y', 'Z'};
+mods_cfg.msg.axis_slot            = [1 2 3];   % comparison slot per axis (see below)
+mods_cfg.msg.radial_axis          = 3;
+mods_cfg.msg.sensor_shift_dims    = [1 2 3];   % axes the sensor shift was applied in
+mods_cfg.msg.unit                 = 'fT/nAm';
 
 % ---- ESG (tangential/radial surface electrodes) -------------------------
 mods_cfg.esg.geoms_path           = 'D:\Simulations\Pertubations\geoms_elec';         % SET THIS
@@ -151,12 +175,40 @@ mods_cfg.esg.have_fem             = false;
 mods_cfg.esg.have_bslaw           = false;   % no Biot-Savart for ESG
 mods_cfg.esg.have_sphere          = false;
 mods_cfg.esg.have_bem_cond        = true;
+mods_cfg.esg.display              = 'ESG';
+mods_cfg.esg.axis_names           = {'Tangential', 'Radial'};
+mods_cfg.esg.axis_slot            = [1 3];     % tangential <-> MSG X, radial <-> MSG Z
+mods_cfg.esg.radial_axis          = 2;
+mods_cfg.esg.sensor_shift_dims    = [1 2];     % ESG sensor shifts hold Z at 0
+mods_cfg.esg.unit                 = 'uV/nAm';
+
+% AXIS SLOTS. MSG and ESG do not have the same sensor axes, so an MSG-vs-ESG
+% comparison needs to know which axes correspond. Slots follow the MSG
+% triaxial convention (1 = X, 2 = Y, 3 = Z); an axis with the same slot in
+% both modalities is compared directly. ESG tangential sits with MSG X and ESG
+% radial with MSG Z. Every comparison is ALSO made on the whole array (all
+% axes stacked), which needs no matching and is the headline cross-modality
+% number.
 
 % ---- Combined (MSG vs ESG comparison output) ----------------------------
 combined_results_dir = 'D:\Simulations\Pertubations\results\combined';   % SET THIS
 
 % Which modalities the master loop should run
 pert_modalities = {'msg', 'esg'};   % SET THIS: e.g. {'msg'} to run MSG only
+
+% Which sensor array the analysis uses. msg_fwd writes a front and a back
+% file per geometry; only files for this array are loaded. Loading both
+% under one key would let whichever is read second silently replace the
+% first.
+analysis_array = 'back';            % SET THIS: 'back' or 'front'
+
+% How leadfields are brought to fT/nAm (MSG) and uV/nAm (ESG) on load.
+%   'auto'  - per file, from its magnitude (pt_unit_scale). Needed whenever
+%             files come from different writers: the conductivity files carry
+%             an extra x1e15, and raw BEM output may be per nA*m or per A*m.
+%   'fixed' - bem_unit_scale below for BEM, 1 for everything else (the old
+%             behaviour; safe for r2 only, which ignores scale).
+unit_scale_mode = 'auto';
 
 
 % =========================================================================
@@ -188,6 +240,8 @@ have_fem             = M.have_fem;
 have_bslaw           = M.have_bslaw;
 have_sphere          = M.have_sphere;
 have_bem_cond        = M.have_bem_cond;
+axis_names           = M.axis_names;
+radial_axis          = M.radial_axis;
 
 % BEM raw output is T/nAm for MSG, V/nAm for ESG — scale to the reporting unit.
 % (r² and heatmaps are scale-invariant; this only affects absolute-amplitude
@@ -438,3 +492,124 @@ src_spacing_mm   = 5;    % mm between adjacent source positions along cord
 
 pub_line_width   = 2.0;
 pub_marker_size  = 7;
+
+% =========================================================================
+% STAGED ANALYSIS (stages 1-6, see RUN_ORDER.md)
+% =========================================================================
+% Everything below is read by the staged scripts: pt_compute_metrics,
+% pt_baseline, pt_within_modality, pt_compare_modalities, pt_noise_simulate,
+% pt_noise_analyse and pt_summary_table. Each stage writes to its own
+% numbered subfolder of stage_results_dir.
+
+stage_results_dir = 'D:\Simulations\Pertubations\results\staged';   % SET THIS
+
+% Perturbation types, in reporting order, and how they are labelled
+pert_types        = {'source', 'sensor', 'cond'};
+pert_type_display = struct('source', 'Source space', ...
+                           'sensor', 'Sensor array', ...
+                           'cond',   'Conductivity');
+pert_type_colors  = struct('source', [0.90 0.55 0.10], ...   % orange
+                           'sensor', [0.20 0.45 0.80], ...   % blue
+                           'cond',   [0.25 0.62 0.35]);      % green
+bundle_names      = {'small', 'medium', 'large'};
+
+% Dipole orientations reported by every stage. 'ALL' stacks the three
+% orientations into one vector (msg_fwd's concatenated convention) and is the
+% single number to quote when one is wanted per comparison.
+metric_orientations  = {'VD', 'RC', 'LR', 'ALL'};
+headline_orientation = 'ALL';
+ori_titles = struct('VD', 'Ventral-Dorsal', 'RC', 'Rostral-Caudal', ...
+                    'LR', 'Left-Right', 'ALL', 'All orientations');
+
+% Modality display colours
+modality_colors = struct('msg', [0.49 0.18 0.56], ...   % purple
+                         'esg', [0.20 0.63 0.35]);      % green
+
+% ---- Statistics ---------------------------------------------------------
+% The unit of observation is one perturbation REALISATION (one random shift,
+% or one random conductivity draw), summarised by its median over cord
+% positions. With 8 realisations per bundle, bundle-level tests are small-n
+% by design; the pooled rows (24 per type) carry more power.
+stats_n_perm = 10000;   % permutations (tests between 8 vs 8 are enumerated exactly)
+stats_n_boot = 10000;   % bootstrap draws for median CIs
+stats_alpha  = 0.05;    % FDR level
+stats_seed   = 2026;    % RNG seed for reproducible p-values and CIs
+
+% Source and sensor shifts are drawn from the SAME shift vectors (see the two
+% blocks above), so shift k of one is paired with shift k of the other. Set
+% false if you regenerate them independently.
+source_sensor_paired = true;
+
+% Is shift k in MSG the same geometric change as shift k in ESG? True when
+% both modalities were generated from the same shift vectors / conductivity
+% seed. ESG sensor shifts hold Z at 0, so they are NOT the same shift.
+msg_esg_paired = struct('source', true, 'sensor', false, 'cond', true);
+
+% Forward model used for MSG-vs-ESG comparisons (must exist in both)
+modality_compare_method = 'bem';
+
+% ---- Stage 1: noise-free baseline ---------------------------------------
+% {modality, method, display name}. The unperturbed geometry of each is shown.
+baseline_models = {
+    'msg', 'bslaw', 'MSG — Biot-Savart'
+    'msg', 'bem',   'MSG — BEM'
+    'esg', 'bem',   'ESG — BEM'
+};
+baseline_model_colors = [0.80 0.15 0.10; 0.49 0.18 0.56; 0.20 0.63 0.35];
+
+% Forward-model-type comparisons: {modality, reference method, comparison
+% method, label}. The reference is the RE denominator.
+baseline_pairs = {
+    'msg', 'bem', 'bslaw', 'Biot-Savart vs BEM'
+};
+
+% Cord positions (mm from the top of the source space) for the topoplots
+baseline_topo_src_mm = [75, 250, 450];   % SET THIS
+
+% ---- Stage 5: sensor noise ----------------------------------------------
+% The measured field pattern is estimated from trial-averaged data by
+% projecting onto the known source waveform w:
+%     g_hat = Y w / (w'w) = g + noise,   noise s.d. = sigma / ||w||
+% and scored with the same four metrics against the noise-free ORIGINAL
+% field. At zero noise this reproduces stages 2-4 exactly.
+%
+% Noise floors and bandwidths match simulations/config_sim.m; keep the two
+% in step if you change either.
+noise_systems = struct( ...
+    'label',        {'SQUID MSG',  'OP-MSG',     'ESG'}, ...
+    'short',        {'squid_msg',  'op_msg',     'esg'}, ...
+    'modality',     {'msg',        'msg',        'esg'}, ...
+    'method',       {'bem',        'bem',        'bem'}, ...
+    'density',      {5,            20,           1}, ...        % per sqrt(Hz)
+    'unit_txt',     {'fT/sqrt(Hz)', 'fT/sqrt(Hz)', 'uV/sqrt(Hz)'}, ...
+    'bandwidth_hz', {1000,         150,          Inf}, ...
+    'color',        {[0.10 0.30 0.80], [0.10 0.60 0.20], [0.80 0.15 0.10]});
+
+% Evoked source waveform: Gaussian-windowed sinusoid (as config_sim)
+noise_fs        = 1500;     % Hz
+noise_duration  = 0.100;    % s
+noise_freq      = 70;       % Hz
+noise_peak_nAm  = 3;        % nA*m
+noise_latency   = 0.025;    % s
+noise_env_sd    = 0.005;    % s
+noise_n_trials  = 8000;     % trials averaged
+
+% Noise levels as multiples of each system's own floor. 0 is always added,
+% so the noise-free result is the first point of every curve.
+noise_factors   = [0.125, 0.25, 0.5, 1, 2, 4, 8];
+noise_n_real    = 20;       % noise realisations per level
+noise_seed      = 2026;
+noise_reference_factor = 1; % level used for the "realistic" comparisons
+
+% A perturbation counts as detected in one realisation when its error
+% exceeds this percentile of the unperturbed (noise-only) error at the
+% same noise level. The critical noise level is where the detection rate
+% falls below noise_detect_rate.
+noise_detect_pct  = 95;
+noise_detect_rate = 0.8;
+
+% Systems compared against each other at every noise level
+noise_compare_pairs = {'squid_msg', 'esg'; 'op_msg', 'esg'; 'squid_msg', 'op_msg'};
+
+% Figure resolution (dpi)
+fig_resolution = 600;
