@@ -1,8 +1,10 @@
 function q = pt_quantile(x, p, dim)
-% pt_quantile - Percentiles without the Statistics Toolbox
+% pt_quantile - Percentiles of an array along one dimension
 %
-% Linear-interpolation percentiles matching MATLAB's prctile convention,
-% ignoring NaNs, along one dimension.
+% Applies msg_fwd's pctl to every slice, so every percentile in msg_pert is
+% computed by the same definition as every percentile in msg_fwd and
+% msg_models (linear interpolation matching MATLAB's prctile, NaNs ignored).
+% This function only adds the array handling pctl leaves to its callers.
 %
 % USAGE:
 %   q = pt_quantile(x, p)          % along the first non-singleton dimension
@@ -37,15 +39,8 @@ xp   = reshape(xp, sz(1), []);
 
 q = nan(numel(p), size(xp, 2));
 for c = 1:size(xp, 2)
-    v = sort(xp(~isnan(xp(:, c)), c));
-    n = numel(v);
-    if n == 0, continue; end
-    if n == 1, q(:, c) = v; continue; end
     for k = 1:numel(p)
-        pos = p(k) / 100 * n + 0.5;
-        pos = max(1, min(n, pos));
-        lo  = floor(pos); hi = ceil(pos);
-        q(k, c) = v(lo) + (pos - lo) * (v(hi) - v(lo));
+        q(k, c) = pctl(xp(:, c), p(k));
     end
 end
 

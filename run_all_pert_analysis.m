@@ -1,8 +1,9 @@
-% run_perturbation_analysis - Master script for the msg_pert analysis (Phase 2)
+% run_all_pert_analysis - Phase 2: run every analysis stage
 %
-% Runs every analysis stage in order, for both modalities, from the
-% leadfields computed in msg_fwd. See RUN_ORDER.md for what each stage needs
-% and costs, and INTERPRETATION.md for how to read the outputs.
+% Runs every analysis stage in order, for both modalities, from the lead
+% fields that run_all_perturbations (Phase 1) computed. See RUN_ORDER.md for
+% what each stage needs and costs, and INTERPRETATION.md for how to read the
+% outputs.
 %
 % STAGES
 %   0  Load and compute     per modality: pt_load_leadfields, pt_compute_metrics
@@ -10,10 +11,10 @@
 %                                                  amplitude, model-type metrics
 %   2  Within MSG           pt_within_modality     perturbation types and sizes
 %   3  Within ESG           pt_within_modality     the same for ESG
-%   4  MSG vs ESG           pt_compare_modalities  the two modalities compared,
-%                                                  with statistics
-%   5  Sensor noise         pt_noise_simulate,     stages 2-4 repeated through
-%                           pt_noise_analyse       realistic sensor noise
+%   4  MSG vs ESG           pt_compare_modalities  the two modalities compared
+%   5  Sensor noise         pt_noise_simulate,     N13-like response at C7 through
+%                           pt_noise_analyse       realistic sensor noise; stages
+%                                                  2-4 repeated
 %   6  Summary              pt_summary_table       every factor on one scale
 %
 %   Optional, off by default: the earlier r2-only figures and tables
@@ -21,15 +22,17 @@
 %   pt_plot_slope_vs_position, pt_compute_table, pt_compare_perturbations).
 %
 % USAGE:
-%   run_perturbation_analysis
+%   run_all_pert_analysis
 %
 %   Set the flags below to run a subset. Each stage reads only files written
 %   by earlier stages, so any stage can be re-run on its own once those exist:
 %     pt_modality('set', 'esg');  pt_within_modality
 %
 % CONFIGURATION:
-%   config_pert.m — paths, methods, perturbation definitions, statistics and
-%   noise settings. Nothing here needs editing apart from the flags.
+%   config_pert_paths.m — every folder (set data_root)
+%   config_pert.m       — methods, perturbation definitions, interval and
+%                         noise settings
+%   Nothing here needs editing apart from the flags.
 %
 % REPOSITORY:
 %   https://github.com/maikeschmidt/msg_pert
@@ -55,7 +58,7 @@ run_stage5 = true;    % sensor noise (simulation is the slow part)
 run_stage6 = true;    % summary across stages
 run_legacy = false;   % earlier r2-only figures and tables, per modality
 
-fprintf('  MSG Perturbation Analysis Pipeline\n');
+fprintf('  MSG Perturbation Pipeline — Phase 2: analysis\n');
 fprintf('  University College London\n');
 fprintf('  Department of Imaging Neuroscience\n\n');
 

@@ -13,10 +13,12 @@ function pt_write_table(T, base, spec)
 %   base  - output path WITHOUT extension, e.g. fullfile(d, 'within_types')
 %   spec  - struct:
 %             .cols     {n x 4} cell: {variable, txt header, tex header, fmt}
-%                       fmt is a sprintf format, or 'p' for a p-value
-%                       ('<0.001' below 0.001), or 'ci' to print
-%                       "median [lo, hi]" from variables <var>, <var>_ci_lo
-%                       and <var>_ci_hi.
+%                       fmt is a sprintf format, or one of:
+%                         'ci'  "median [lo, hi]" from variables <var>,
+%                               <var>_ci_lo and <var>_ci_hi
+%                         'eci' "+est [+lo, +hi]" from <var>, ci_lo and
+%                               ci_hi (the comparison tables' interval)
+%                         'yn'  'yes' / 'no' for a logical
 %             .title    first line of the TXT file
 %             .notes    {cellstr} lines printed under the TXT title
 %             .caption  LaTeX caption
@@ -141,12 +143,21 @@ function s = fmt_cell(T, r, var, fmt)
             else
                 s = sprintf('%.3g [%.3g, %.3g]', m, lo, hi);
             end
-        case 'p'
-            v = T.(var)(r);
-            if isnan(v),        s = '--';
-            elseif v < 0.001,   s = '<0.001';
-            else,               s = sprintf('%.3f', v);
+        case 'eci'
+            m  = T.(var)(r);
+            lo = T.ci_lo(r);
+            hi = T.ci_hi(r);
+            if isnan(m)
+                s = '--';
+            elseif isnan(lo)
+                s = sprintf('%+.3g', m);
+            else
+                s = sprintf('%+.3g [%+.3g, %+.3g]', m, lo, hi);
             end
+        case 'yn'
+            v = T.(var)(r);
+            if iscell(v), v = v{1}; end
+            if v, s = 'yes'; else, s = 'no'; end
         otherwise
             v = T.(var)(r);
             if iscell(v), v = v{1}; end

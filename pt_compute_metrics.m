@@ -7,7 +7,7 @@
 % are computed from identical numbers.
 %
 % USAGE:
-%   pt_modality('set', 'msg');   % or 'esg' (run_perturbation_analysis does this)
+%   pt_modality('set', 'msg');   % or 'esg' (run_all_pert_analysis does this)
 %   pt_compute_metrics
 %
 % INPUT:
@@ -24,8 +24,9 @@
 %     .axcfg_slot      comparison slot of each axis set (0 = array)
 %     .n_trunc         sensors per axis used
 %     .pert.<type>     for type = source | sensor | cond:
-%        .keys         {1 x n} perturbed geometry keys (without method prefix
-%                      for source/sensor; full keys for cond)
+%        .keys         {1 x n} perturbed keys without the method prefix; the
+%                      lead field of method m is <m>_<key> (so cond keys
+%                      cond_<ref>_bundle<B>_shift<S> serve BEM and FEM)
 %        .bundle_idx   [n x 1]
 %        .shift_idx    [n x 1]
 %        .magnitude    [n x 1] |shift| in mm, or mean % conductivity change
@@ -34,6 +35,11 @@
 %        .ref_key      reference geometry key
 %        .M.<method>   struct with fields re, rsq, rdm, lnmag, each
 %                      [n x n_src x n_axcfg x n_ori]; missing leadfields NaN
+%     .remesh          (when FEM re-meshing lead fields exist) the same
+%                      fields for the unshifted geometry re-meshed with
+%                      fem_remesh_seeds, against the production FEM mesh:
+%                      the FEM's re-meshing floor. Kept out of .pert so no
+%                      stage treats it as a perturbation type.
 %
 % METRICS:
 %   From pt_metrics_block, identical in definition to msg_fwd's lf_metrics.
@@ -106,7 +112,7 @@ P.sensor.mag_unit   = 'mm';
 P.sensor.shift_vec  = sen_vec .* ismember(1:3, sdims);
 P.sensor.methods    = fwd_methods;
 
-P.cond.keys         = cellfun(@(k) ['bem_cond_' cond_sensitivity_ref_key ...
+P.cond.keys         = cellfun(@(k) ['cond_' cond_sensitivity_ref_key ...
                         regexprep(k, '^.*(_bundle\d+_shift\d+)$', '$1')], ...
                         cond_sensitivity_keys, 'UniformOutput', false);
 P.cond.ref_key      = cond_sensitivity_ref_key;
@@ -115,10 +121,29 @@ P.cond.shift_idx    = cond_shift_idx(:);
 P.cond.magnitude    = cond_pct;
 P.cond.mag_unit     = '%';
 P.cond.shift_vec    = [];
-P.cond.methods      = {'bem'};
+P.cond.methods      = {};
+if have_bem_cond, P.cond.methods{end+1} = 'bem'; end
+if have_fem && have_fem_cond, P.cond.methods{end+1} = 'fem'; end
 
-if ~have_bem_cond
+if isempty(P.cond.methods)
     P = rmfield(P, 'cond');
+end
+
+% FEM re-meshing control: the unshifted geometry meshed with other seeds.
+% Scored like a perturbation so the numbers are directly comparable, then
+% moved out of P (see PM.remesh).
+if have_fem && have_fem_remesh && ~isempty(fem_remesh_seeds)
+    n_rm = numel(fem_remesh_seeds);
+    P.remesh.keys       = arrayfun(@(k) sprintf('remesh_%s_k%d', sensitivity_ref_key, k), ...
+                            1:n_rm, 'UniformOutput', false);
+    P.remesh.ref_key    = sensitivity_ref_key;
+    P.remesh.bundle_idx = ones(n_rm, 1);
+    P.remesh.shift_idx  = (1:n_rm)';
+    P.remesh.magnitude  = zeros(n_rm, 1);
+    P.remesh.mag_unit   = 'mm';
+    P.remesh.shift_vec  = zeros(n_rm, 3);
+    P.remesh.methods    = {'fem'};
+    P.remesh.seeds      = fem_remesh_seeds(:);
 end
 
 
@@ -180,11 +205,7 @@ for t = 1:numel(types)
             fprintf('  [%s/%s] reference %s not loaded — skipped\n', ty, method, ref_key);
             continue
         end
-        if strcmp(ty, 'cond')
-            full_keys = T.keys;
-        else
-            full_keys = cellfun(@(k) [method '_' k], T.keys, 'UniformOutput', false);
-        end
+        full_keys = cellfun(@(k) [method '_' k], T.keys, 'UniformOutput', false);
         present = cellfun(@(k) isfield(leadfields, k), full_keys);
         fprintf('  [%s/%s] %d of %d perturbations loaded\n', ty, method, sum(present), n);
         if ~any(present), continue; end
@@ -238,6 +259,10 @@ PM.axcfg_names = axcfg_names;
 PM.axcfg_slot  = axcfg_slot;
 PM.radial_cfg  = radial_axis;
 PM.n_trunc     = n_trunc;
+if isfield(P, 'remesh')
+    if ~isempty(P.remesh.methods), PM.remesh = P.remesh; end
+    P = rmfield(P, 'remesh');
+end
 PM.pert        = P;
 PM.metric_opts = mopts;
 PM.created     = char(datetime('now'));

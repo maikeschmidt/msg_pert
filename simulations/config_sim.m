@@ -117,26 +117,28 @@ addpath(fileparts(sim_dir));   % msg_pert root (pt_add_functions -> msg_fwd)
 % USER CONFIGURATION — paths
 % =========================================================================
 
-% MSG and ESG geometries live in separate folders. If yours happen to share a
-% folder, just set both to the same path.
-msg_geoms_path = 'D:\Simulations\Pertubations\geometries';        % SET THIS
-esg_geoms_path = 'D:\Simulations\Pertubations\geoms_elec';    % SET THIS
+% Every path comes from msg_pert's config_pert_paths, shared with the main
+% pipeline; change data_root there.
+config_pert_paths;
 
-sim_save_dir   = 'D:\Simulations\Pertubations\results\simulation';% SET THIS
-sim_out_dir    = 'D:\Simulations\Pertubations\fields\simulation'; % SET THIS
+msg_geoms_path = msg_geoms_dir;
+esg_geoms_path = esg_geoms_dir;
+
+sim_save_dir   = sim_results_dir;
+sim_out_dir    = sim_fields_dir;
 
 % Roots of the leadfield sets (perfect + perturbed forward fields).
 % These hold BOTH the original and the source/sensor-shift geometries, each in
 % its own geometries_<short> subfolder (standard msg_fwd output layout).
-msg_bem_root   = 'D:\Simulations\Pertubations\fields\mag\bem';        % SET THIS
-msg_bslaw_root = 'D:\Simulations\Pertubations\fields\mag\bs_law';     % SET THIS
-esg_bem_root   = 'D:\Simulations\Pertubations\fields\elec\bem_elec';  % SET THIS
+msg_bem_root   = msg_bem_dir;
+msg_bslaw_root = msg_bslaw_dir;
+esg_bem_root   = esg_bem_dir;
 
-% Roots holding the BEM-conductivity leadfields (produced by
-% run_conductivity_perturbation) — one per modality. Cond files live under the
-% root in geometries_<cond_short>/leadfield_<cond_short>_bem_cond_bundleB_shiftS_<array>.mat
-msg_cond_root  = 'D:\Simulations\Pertubations\fields\mag\bem_cond_msg';   % SET THIS
-esg_cond_root  = 'D:\Simulations\Pertubations\fields\elec\bem_cond_esg';  % SET THIS
+% Roots holding the BEM-conductivity leadfields — one per modality. Cond files
+% live under the root in
+% geometries_<cond_short>/leadfield_<cond_short>_bem_cond_bundleB_shiftS_<array>.mat
+msg_cond_root  = msg_bem_cond_dir;
+esg_cond_root  = esg_bem_cond_dir;
 cond_short     = 'original_source_original';   % geometry the conductivity change was applied to
 
 if ~exist(sim_save_dir, 'dir'); mkdir(sim_save_dir); end

@@ -16,8 +16,9 @@ Here the model is taken as given and **noise** is the variable.
 > directly alongside stages 1–4. This package scores the sensor-by-time data
 > matrix with r² for one representative shift per bundle; it remains useful for
 > the measured-topoplot figures and quick single-geometry checks. The noise
-> floors and source waveform are copied into `config_pert.m` — keep the two in
-> step.
+> floors are copied into `config_pert.m` — keep the two in step. The source
+> waveform is not: stage 5 simulates an N13-like response at C7, this package
+> its own 70 Hz burst.
 
 ## Pipeline
 

@@ -109,7 +109,9 @@ dist_mm   = src_range * src_spacing_mm;
 fprintf('[1/3] Topoplots\n');
 slot_names = {'X / Tangential', 'Y', 'Z / Radial'};
 
-for src_mm = baseline_topo_src_mm
+% The evoked-response source of stage 5 is always shown, so its noise-free
+% fields are on record next to the noisy measurements
+for src_mm = unique([baseline_topo_src_mm(:)', evoked_src_mm])
     si = min(max(round(src_mm / src_spacing_mm), 1), n_sources);
     for slot = 1:3
         fig = figure('Color', 'w', 'Units', 'inches', ...

@@ -5,7 +5,7 @@ function out = pt_modality(action, value)
 % clearvars), so there is no ordinary workspace variable an outer loop could use
 % to tell them which modality to run. This function holds the choice in a
 % persistent variable instead — clearvars does NOT clear persistents, so
-% run_perturbation_analysis can loop over MSG and ESG, setting the modality once
+% run_all_pert_analysis can loop over MSG and ESG, setting the modality once
 % per iteration, and every sub-script picks it up via config_pert.
 %
 % USAGE:

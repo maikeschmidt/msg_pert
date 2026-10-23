@@ -35,7 +35,7 @@ biases amplitude estimates; the second also biases localisation.
 **Signed gain is descriptive only.** A source shift towards the array raises
 the field and one away lowers it, so across random shifts the signed gain can
 average to about zero even when every shift changes the amplitude a lot. All
-tests on amplitude therefore use |gain|.
+comparisons of amplitude therefore use |gain|.
 
 **Orientations and axis sets.** Every metric is computed per dipole
 orientation (VD, RC, LR) and for `ALL`, the three stacked into one vector,
@@ -44,39 +44,107 @@ for the whole array, all axes stacked. The headline figures and LaTeX tables
 use `headline_orientation` (default `ALL`) on the whole array; the CSVs hold
 everything.
 
+### Which field is the reference
+
+Wherever two **forward models** are compared (stage 1), the reference (the RE
+denominator) is the unperturbed **MRI-derived BEM**, as in msg_fwd and
+msg_models. Wherever a **perturbation** is measured, each model is compared
+with its own unperturbed field, so the number is that model's sensitivity.
+**Biot-Savart** has no volume conductor: it depends only on where the
+sources and sensors are. That makes it the anatomy-independent comparison in
+three places: its response to a shift is the purely geometric part of the
+sensitivity (stage 2, section H), it is unaffected by conductivity by
+construction, and in stage 5 it gives the upper bound on what an MSG system
+could recover from the same sensors.
+
+**FEM** (MSG only) is the second volume-conductor model, compared against
+the BEM in stage 1 and solved for every perturbation, so each result can be
+read for both solvers. Conductivity draws are identical for the two, so
+"does the FEM respond to conductivity error like the BEM" is a paired
+comparison.
+
+### FEM re-meshing
+
+TetGen places its region seeds at random, so two meshes of one geometry give
+different FEM lead fields; msg_models' seed-pair study found this can be as
+large as the BEM–FEM difference itself. Which FEM results contain it:
+
+| FEM result | Mesh | Contains re-meshing? |
+|---|---|---|
+| sensor shift | the unshifted geometry's | no |
+| conductivity draw | the unshifted geometry's | no |
+| source shift | its own (cord and bone moved), `fem_mesh_seed` | **yes** |
+
+So the unshifted geometry is also meshed with `fem_remesh_seeds` (8 seeds by
+default) and each re-mesh is scored against the production mesh exactly as
+a perturbation is. That spread is the **re-meshing floor**
+(`within_fem_remesh`, `fem_remesh_floor`, a row in stage 6). A FEM
+source-shift bundle inside the floor cannot be told apart from re-meshing;
+only the part above it is the shift. The same caveat applies to every FEM
+quantity built from source shifts: the source-vs-sensor difference, the
+FEM anatomy contribution, and the FEM source rows of stage 5. The BEM has
+no such floor: its boundaries are the surfaces themselves.
+
 ---
 
 ## 2. The statistics
 
+### Intervals, not tests
+
+Every value in this pipeline is computed exactly from a simulated geometry.
+There is no measurement noise in stages 1–4, so there is no null hypothesis
+for a significance test to test: a difference between two perturbations is
+real by construction. What *is* uncertain is how well the random draws
+represent the perturbations that could occur, and that is a question about
+spread, which an interval answers directly. This is the convention msg_fwd
+uses for its replicate geometries (`st_warp_summary`) and msg_models for its
+sweeps, so the three toolboxes report the same kind of number:
+
+| Quantity | How it is reported |
+|---|---|
+| one condition | median, 95% bootstrap interval of the median, IQR, 95th percentile with its own interval (`pt_describe`) |
+| two conditions, paired | median of the per-realisation difference, 95% bootstrap interval (`pt_compare_two`) |
+| two conditions, unpaired | difference of medians, 95% bootstrap interval resampling each condition |
+| metric vs perturbation size | Spearman ρ with a 95% bootstrap interval over realisations (`pt_rank_corr`) |
+| along the cord | the same, at each position |
+
+A comparison is marked **separated** (column `separated`, ◇ in the figures)
+when the interval of the difference excludes zero. That describes the
+interval; it is not a significance test, and no multiple-comparison
+correction is applied because nothing is being tested. Percentiles
+everywhere come from msg_fwd's `pctl`, and median intervals from
+`st_boot_ci_median`, so a msg_pert interval and a msg_fwd interval are
+computed identically.
+
+**The coverage statement**, as in msg_fwd, is worded descriptively:
+
+> In 95% of the 8 realisations, the cord-median RE was at or below X%
+> (95% CI …).
+
+Not "a new perturbation has a 95% chance of falling below X". With 8
+realisations per bundle the 95th percentile rests on the largest one or two
+values; quote its interval with it.
+
 ### The unit of observation
 
-Every test treats **one perturbation realisation** (one random shift or one
-random conductivity draw) as one observation, summarised by its **median
-over cord positions**. So n = 8 per bundle and 24 pooled. Two consequences:
+Every comparison treats **one perturbation realisation** (one random shift
+or one random conductivity draw) as one observation, summarised by its
+**median over cord positions** (or, in stage 5, by its value at the C7
+source). So n = 8 per bundle and 24 pooled. Two consequences:
 
-- Bundle-level tests have little power by design. A non-significant result
-  at n = 8 is not evidence of no effect; read the effect size and the
-  pooled row.
+- Bundle-level intervals are wide by design. An interval that includes zero
+  at n = 8 is not evidence of no difference; read the pooled row and the
+  medians.
 - The cord positions are not independent observations and are never
-  pooled as if they were. Where positions are tested individually (the
-  along-cord figures), each position is its own test across realisations,
-  FDR-corrected along the cord.
+  pooled as if they were. Where positions are compared individually (the
+  along-cord figures), each position has its own interval across
+  realisations.
 
-### Tests and effect sizes
-
-| Situation | Test | Effect size |
-|---|---|---|
-| paired (same realisation, two conditions) | sign-flip permutation on the paired differences (exact for n ≤ 20) | matched-pairs rank-biserial |
-| unpaired | label-shuffling permutation on the mean difference (exact for 8 vs 8) | Cliff's δ |
-| metric vs perturbation size | Spearman ρ, permutation p | ρ |
-
-Both effect sizes run from −1 to +1 and are **positive when the first-named
-condition shows the larger value** (for r², larger means *more* similar, so
-the sign reads the other way from RE, RDM and |gain|). Rough guides for
-|Cliff's δ|: < 0.15 negligible, < 0.33 small, < 0.47 medium, otherwise large.
-A p-value says whether a difference is distinguishable from none; the effect
-size says how consistently one condition exceeds the other; the medians say
-by how much in % RE. Report all three.
+Signs: every difference is **first-named minus second-named**, so positive
+means the first condition shows the larger value. For r², larger means
+*more* similar, so the sign reads the other way from RE, RDM and |gain|. The
+stage-4 difference map converts r² to 1 − r² so that + always means "more
+affected".
 
 ### What is paired with what
 
@@ -88,18 +156,11 @@ by how much in % RE. Report all three.
 | Biot-Savart vs BEM | yes | one geometry, solved twice |
 | MSG vs ESG | per type, `msg_esg_paired` | only if the same geometric change was applied to both |
 | SQUID MSG vs OP-MSG | yes | same lead fields, different noise floor |
+| MSG system vs its Biot-Savart bound | yes | same shifts, same noise draws |
 
-### Multiple comparisons
+### What the intervals resample
 
-p-values are Benjamini–Hochberg adjusted (`p_fdr`) within one **family ×
-metric**, across methods, orientations, axis sets and subsets. So "every
-MSG-vs-ESG test on RE" is one family. Along-cord tests are adjusted across
-positions within each panel. Stars in the figures are always FDR-adjusted.
-
-### Confidence intervals
-
-95% percentile bootstrap intervals of the median. What they resample is
-stated in every table: **realisations** in stages 2–5 ("how much would the
+Stated in every table: **realisations** in stages 2–5 ("how much would the
 median move for a different set of random shifts of this size"), **source
 positions** for the stage-1 model-type comparison. Neither is a
 between-subject interval. This is one anatomy, perturbed.
@@ -108,7 +169,7 @@ between-subject interval. This is one anatomy, perturbed.
 
 ## 3. Stage 1 — baseline
 
-**Topoplots.** Unperturbed fields for Biot-Savart MSG, BEM MSG and BEM ESG,
+**Topoplots.** Unperturbed fields for Biot-Savart, BEM and FEM MSG and BEM ESG,
 one row per model, with a colour scale per row (the units differ). One
 figure per axis slot: X/tangential, Y, Z/radial. ESG has no Y panel, and that
 is shown explicitly rather than dropped. Look for how spatially concentrated
@@ -121,10 +182,12 @@ Amplitude sets the SNR in stage 5, and focality usually predicts which
 modality is more sensitive to sensor shifts. Read these before reading the
 perturbation results.
 
-**Model-type decomposition.** Biot-Savart against BEM on the unperturbed
-geometry. This is the scale of "how different are two reasonable forward
-models". Every perturbation effect in stages 2–4 can be judged against it.
-It also appears as a row in the stage-6 ranking. A difference that is mostly
+**Model-type decomposition.** Biot-Savart and FEM, each against the
+MRI-derived BEM on the unperturbed geometry. FEM vs BEM is the scale of "how
+different are two reasonable volume-conductor models" (msg_fwd's central
+comparison, here on this geometry); Biot-Savart vs BEM is what the volume
+conductor does at all. Every perturbation effect in stages 2–4 can be judged
+against them, and both appear as rows in the stage-6 ranking. A difference that is mostly
 gain (the volume conductor changes how much field escapes) is physically
 expected; a large RDM means the two models disagree about the field pattern.
 
@@ -143,28 +206,43 @@ Read in this order.
    Expect RE to peak where the field is weakest (RE is relative, so a small
    reference field inflates it): check against the stage-1 amplitude profile
    before calling a peak anatomical.
-3. **Dose response** — larger shifts should give larger errors (ρ > 0). A
-   flat dose response means the metric is saturated or that direction
-   matters more than size. Check the per-realisation scatter: two clouds at
+3. **Dose response** — larger shifts should give larger errors (ρ > 0, its
+   interval above zero). A flat dose response means the metric is saturated
+   or that direction matters more than size. Check the per-realisation scatter: two clouds at
    the same |shift| usually mean the error depends on *which way* the shift
    went.
 4. **Types compared** — which perturbation matters most at matched size.
    Source and sensor shifts of the same vector move the cord relative to the
    sensors by the same amount. What differs is whether the anatomy moves
    through the volume conductor (source shift) or the sensors move past a
-   fixed volume conductor (sensor shift). So a significant source-vs-sensor
+   fixed volume conductor (sensor shift). So a separated source-vs-sensor
    difference is the effect of the volume conductor moving with the cord.
 5. **Gain vs RDM** — each point is a realisation. Points hugging the
    horizontal axis are pure amplitude changes; points rising away from it
    moved the pattern.
-6. **Methods compared** (MSG) — whether Biot-Savart and BEM are equally
-   sensitive to the same perturbation. If Biot-Savart shows a similar
-   perturbation effect to BEM, the sensitivity is geometric (source–sensor
-   distance). If they differ, the volume conductor changes how perturbations
-   propagate.
+6. **Methods compared** (MSG) — whether Biot-Savart, BEM and FEM are
+   equally sensitive to the same perturbation, every pair as a paired
+   difference per realisation. BEM vs FEM on sensor shifts and conductivity
+   is a clean solver comparison; on source shifts it includes the FEM's
+   re-meshing (item 9).
 7. **Source minus sensor along the cord** — the paired difference at each
-   position, with FDR-significant positions marked. Use it to say *where* the
-   two perturbation types diverge.
+   position, marked where its interval excludes zero. Use it to say *where*
+   the two perturbation types diverge.
+8. **Anatomy contribution** (MSG; `within_anatomy`,
+   `anatomy_contribution_<bem|fem>`, `anatomy_along_cord_<bem|fem>_<type>`) —
+   Biot-Savart's response to a shift is the purely geometric sensitivity,
+   because it has no anatomy. BEM (or FEM) minus Biot-Savart for the same
+   shift is therefore what the volume conductor adds (positive) or removes
+   (negative); the model/BS column gives it as a ratio of the error, where 1
+   means the anatomy adds nothing. BEM and FEM agreeing here means the
+   anatomy contribution is a property of the anatomy, not of the solver. Near zero:
+   the perturbation is a source–sensor distance effect and an anatomy-free
+   model predicts it. Clearly positive: the volume conductor amplifies the
+   error, so the anatomy has to be known to predict it. Conductivity has no
+   row, since Biot-Savart does not depend on it; there the whole effect is
+   anatomical.
+9. **FEM re-meshing floor** (MSG; `within_fem_remesh`, `fem_remesh_floor`) —
+   see section 1. Read every FEM source-shift number against it.
 
 ---
 
@@ -181,12 +259,14 @@ tangential with MSG X, ESG radial with MSG Z) add detail but compare
 physically different channels, so read them as secondary.
 
 - **`headline_<axes>`** — every metric × perturbation type, MSG and ESG side
-  by side per bundle, with FDR stars.
-- **`effect_size_map`** — the same tests as a map; blue = ESG larger,
-  red = MSG larger. The orientation version shows whether a modality
-  difference holds for all dipole orientations or only some.
+  by side per bundle; ◇ where the interval of MSG − ESG excludes zero.
+- **`difference_map`** — the same comparisons as a map of the relative
+  difference `(MSG − ESG) / mean`, in error form (1 − r² for r²), so
+  red = MSG more affected and blue = ESG more affected on every metric. The
+  orientation version shows whether a modality difference holds for all
+  dipole orientations or only some.
 - **`modality_interaction`** — whether the source-minus-sensor difference
-  itself differs between modalities. A significant row means the two
+  itself differs between modalities. A separated row means the two
   modalities *rank the perturbation types differently*: one is more exposed
   to anatomical error, the other to registration error. That is a stronger
   and more useful statement than "MSG is more sensitive".
@@ -195,10 +275,10 @@ physically different channels, so read them as secondary.
   modality degrades faster as registration gets worse.
 - **`along_cord_<type>`** — where along the cord the modalities differ.
 
-When a MSG-vs-ESG test is unpaired (sensor shifts by default), it compares
-two different sets of random shifts. It is valid, but has less power than a
-paired test, and a difference could partly reflect the different shift
-directions. The ESG sensor shift has no Z component, so it is also a smaller
+When a MSG-vs-ESG comparison is unpaired (sensor shifts by default), it
+compares two different sets of random shifts. It is valid, but its interval
+is wider than a paired one, and a difference could partly reflect the
+different shift directions. The ESG sensor shift has no Z component, so it is also a smaller
 shift at the same bundle.
 
 ---
@@ -207,16 +287,53 @@ shift at the same bundle.
 
 ### What is simulated
 
-An evoked response is generated through each lead field, trial-averaged
+The evoked response is the spinal **N13** after median nerve stimulation: a
+stationary generator in the dorsal horn, simulated as a single source at C7
+(`evoked_src_mm`) with a response peaking at 13 ms (`noise_latency`,
+`noise_env_sd`, `noise_freq`; inside the 8–16 ms spinal window used by
+msg_analysis). It is generated through each lead field, trial-averaged
 sensor noise is added at the system's own floor and bandwidth, and the field
-pattern is recovered from the data with a matched filter
-(`ĝ = Y w / wᵀw`). The recovered pattern is scored against the **true,
-unperturbed, noise-free** field with the same four metrics. At noise level 0
-this reproduces stages 2–4 exactly (`test_pt_pipeline` checks this).
+pattern is recovered from the data with a matched filter (`ĝ = Y w / wᵀw`).
+The recovered pattern is scored with the same four metrics against the
+**noise-free, unperturbed field of the same forward model**. At noise level 0
+this reproduces stages 2–4 exactly (`test_pt_pipeline` checks this, at C7
+and for the cord median).
+
+Seven systems are simulated:
+
+| System | Forward model | Role |
+|---|---|---|
+| SQUID MSG, OP-MSG | MRI-derived BEM | realistic MSG |
+| ESG | MRI-derived BEM | realistic ESG |
+| SQUID MSG (FEM), OP-MSG (FEM) | FEM | realistic MSG through the second solver |
+| SQUID MSG (Biot-Savart), OP-MSG (Biot-Savart) | Biot-Savart | anatomy-free upper bound |
+
+The FEM and Biot-Savart systems use the same sensors and the same noise
+draws as their BEM counterparts. A conclusion about recoverability that
+holds for both the BEM and FEM systems does not depend on the solver
+(`systems_squid_msg_fem_vs_squid_msg`, `systems_op_msg_fem_vs_op_msg`). Without a volume conductor nothing attenuates or
+redistributes the field, so they show the best an MSG system with those
+sensors could do. The gap between the two (`systems_squid_msg_bs_vs_squid_msg`,
+`systems_op_msg_bs_vs_op_msg`) is what the anatomy costs in recoverability.
 
 Noise levels are multiples of each system's own floor, so "1×" means
 realistic for every system even though the absolute floors (fT/√Hz, µV/√Hz)
 cannot be compared.
+
+### Two summaries
+
+Every stage-5 output exists twice:
+
+- **`5_noise/c7/`** — the evoked source alone. This is the headline: the
+  signal a median nerve experiment records. The baseline noise question
+  (`noise_only`: how well is the N13 recovered with perfect coregistration,
+  as noise grows from 0× to 8× each system's floor) and the recoverability
+  question (`noise_pert`, `detectability`, `noise_critical_levels`,
+  `error_budget`: does the N13 survive once the geometry is wrong) are both
+  answered here.
+- **`5_noise/cord/`** — the same response placed at every cord position,
+  summarised by the cord median as in stages 2–4. Use it to say whether C7
+  is typical of the cord or a favourable or unfavourable level.
 
 ### Reading the outputs
 
@@ -240,12 +357,15 @@ cannot be compared.
   adds. 100% means the noise is negligible; near 0% means the error is
   almost all noise.
 - **`noise_system_stats` / `systems_<a>_vs_<b>`** — the stage-4 comparisons
-  repeated at every noise level. The 0× row is the noise-free result. The
-  question is whether a noise-free MSG-vs-ESG difference **survives**, is
-  **masked** (the effect size shrinks towards 0 as noise grows) or **reverses**.
-- **`noise_within_stats`** — the stage 2/3 magnitude and type tests at 0× and
-  at the reference level. A type difference that disappears at 1× is real in
-  the model but not observable with that system.
+  repeated at every noise level, as a difference with its interval. The 0×
+  row is the noise-free result. The question is whether a noise-free
+  MSG-vs-ESG difference **survives**, is **masked** (the difference shrinks
+  towards 0 and its interval comes to include it as noise grows) or
+  **reverses**. The Biot-Savart-vs-BEM pairs show how far the realistic
+  model sits below the anatomy-free bound at each level.
+- **`noise_within_stats`** — the stage 2/3 magnitude and type comparisons at
+  0× and at the reference level. A type difference that disappears at 1× is
+  real in the model but not observable with that system.
 
 ### Caveats to state in any write-up
 
@@ -255,19 +375,25 @@ cannot be compared.
 - The matched filter assumes the source waveform is known exactly. Real
   analyses estimate it, so the simulated recovery is a best case for every
   system equally.
-- One source is active at a time. Crosstalk between sources is not
-  modelled.
+- One source is active at a time. Crosstalk between sources, and the
+  cortical N20 that follows the N13, are not modelled.
+- `evoked_src_mm` places C7 by distance along the source space. Check it
+  against the vertebral levels of the geometry before quoting C7 results.
 
 ---
 
 ## 7. Stage 6 — every factor on one scale
 
-`summary_<modality>` ranks the forward-model-type difference, every
-perturbation bundle, noise alone and perturbation + noise at the reference
-level by median RE. It answers "which source of error matters most" for each
-modality. The `CI over` column states what each interval resamples, and it
-differs between rows. Compare magnitudes across rows, not CI overlap.
-`summary_forest` shows the same ranking graphically on a log scale.
+`summary_<modality>` ranks the forward-model-type differences, every
+perturbation bundle for every model, the FEM re-meshing floor, noise alone
+and perturbation + noise at the reference level by median RE, every row as a
+cord median. It answers "which source of
+error matters most" for each modality. `summary_<modality>_c7` is the same
+ranking at the evoked C7 source, from stage 5: each perturbation noise-free,
+noise alone, and perturbation + noise. The `CI over` column states what each
+interval resamples, and it differs between rows. Compare magnitudes across
+rows, not CI overlap. `summary_forest` and `summary_forest_c7` show the
+rankings on a log scale.
 
 ---
 

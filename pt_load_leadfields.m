@@ -66,6 +66,8 @@
 %
 % NOTES:
 %   - Only methods with have_<method> = true are searched
+%   - FEM conductivity draws and the FEM re-meshing control are loaded when
+%     have_fem_cond / have_fem_remesh are set (see the section below)
 %   - Missing files produce a warning and are skipped (not an error)
 %
 % REPOSITORY:
@@ -284,45 +286,58 @@ for g = 1:numel(all_geom_names)
 end
 
 % =========================================================================
-% BEM — CONDUCTIVITY PERTURBATION (standalone section)
+% CONDUCTIVITY PERTURBATIONS AND FEM RE-MESHING (standalone section)
 % =========================================================================
-% All cond leadfields live under a single geometry folder (the unshifted
-% original). Keys: bem_cond_<ref>_bundle<B>_shift<S>
-% Files: <bem_cond_path>/geometries_<ref_short>/leadfield_<ref_short>_bem_cond_bundle<B>_shift<S>_<array>.mat
+% All of these live under the folder of the unshifted original geometry,
+% since none is a separate geometry variant:
+%   BEM cond  <bem_cond_path>/geometries_<ref>/leadfield_<ref>_bem_cond_bundle<B>_shift<S>_<array>.mat
+%             key bem_cond_<ref>_bundle<B>_shift<S>, variable leadfield_cord
+%   FEM cond  <fem_path>/geometries_<ref>/cord_leadfield_<ref>_fem_cond_bundle<B>_shift<S>_<array>.mat
+%             key fem_cond_<ref>_bundle<B>_shift<S>, variable leadfield_ft
+%   FEM re-mesh  <fem_path>/geometries_<ref>/cord_leadfield_<ref>_fem_remesh<K>_<array>.mat
+%             key fem_remesh_<ref>_k<K>, variable leadfield_ft
 
-if have_bem_cond
-    fprintf('\n  --- BEM Conductivity Perturbation ---\n');
-    ref_short    = regexprep(cond_sensitivity_ref_key, '^geometries[_-]?', '');
-    cond_subdir  = fullfile(bem_cond_path, ['geometries_' ref_short]);
-    cond_files   = dir(fullfile(cond_subdir, ...
-        ['leadfield_' ref_short '_bem_cond_*_' analysis_array '.mat']));
+ref_short = regexprep(cond_sensitivity_ref_key, '^geometries[_-]?', '');
+extra = struct('name', {}, 'flag', {}, 'dir', {}, 'prefix', {}, 'pat', {}, ...
+               'var', {}, 'method', {}, 'keyfmt', {});
+extra(end+1) = struct('name', 'BEM-cond', 'flag', have_bem_cond, 'dir', bem_cond_path, ...
+    'prefix', ['leadfield_' ref_short '_bem_cond_'], 'pat', '(bundle\d+_shift\d+)', ...
+    'var', 'leadfield_cord', 'method', 'bem_cond', 'keyfmt', 'bem_cond_%s_%s');
+extra(end+1) = struct('name', 'FEM-cond', 'flag', have_fem && have_fem_cond, 'dir', fem_path, ...
+    'prefix', ['cord_leadfield_' ref_short '_fem_cond_'], 'pat', '(bundle\d+_shift\d+)', ...
+    'var', 'leadfield_ft', 'method', 'fem', 'keyfmt', 'fem_cond_%s_%s');
+extra(end+1) = struct('name', 'FEM-remesh', 'flag', have_fem && have_fem_remesh, 'dir', fem_path, ...
+    'prefix', ['cord_leadfield_' ref_short '_fem_remesh'], 'pat', '(\d+)', ...
+    'var', 'leadfield_ft', 'method', 'fem', 'keyfmt', 'fem_remesh_%s_k%s');
 
-    if isempty(cond_files)
-        warning('No BEM-cond files found in: %s', cond_subdir);
+for x = extra
+    if ~x.flag || isempty(x.dir), continue; end
+    fprintf('\n  --- %s ---\n', x.name);
+    sub   = fullfile(x.dir, ['geometries_' ref_short]);
+    files = dir(fullfile(sub, [x.prefix '*_' analysis_array '.mat']));
+    if isempty(files)
+        warning('No %s files found in: %s', x.name, sub);
     end
-
-    for cf = 1:numel(cond_files)
-        fname = cond_files(cf).name;
-        tok   = regexp(fname, ...
-            ['leadfield_' ref_short '_bem_cond_(bundle\d+_shift\d+)_(.+)\.mat'], 'tokens');
+    for cf = 1:numel(files)
+        fname = files(cf).name;
+        tok   = regexp(fname, ['^' regexptranslate('escape', x.prefix) x.pat '_(.+)\.mat$'], 'tokens');
         if isempty(tok); continue; end
-        bund_shift = tok{1}{1};   % e.g. 'bundle1_shift1'
-        arr        = tok{1}{2};   % e.g. 'front' or 'back'
-        key        = ['bem_cond_' cond_sensitivity_ref_key '_' bund_shift];
+        arr = tok{1}{2};
+        key = sprintf(x.keyfmt, cond_sensitivity_ref_key, tok{1}{1});
 
-        tmp = load(fullfile(cond_subdir, fname), 'leadfield_cord');
-        if ~isfield(tmp, 'leadfield_cord')
-            warning('Variable leadfield_cord not found in: %s', fname);
+        tmp = load(fullfile(sub, fname), x.var);
+        if ~isfield(tmp, x.var)
+            warning('Variable %s not found in: %s', x.var, fname);
             continue
         end
-        [sc, last_why] = scale_for(tmp.leadfield_cord, 'bem_cond');
+        [sc, last_why] = scale_for(tmp.(x.var), x.method);
         scale_log(end+1, :) = {key, fname, sc, last_why}; %#ok<SAGROW>
         [leadfields, abs_max_per_source] = organise_leadfield( ...
-            leadfields, abs_max_per_source, tmp.leadfield_cord, ...
+            leadfields, abs_max_per_source, tmp.(x.var), ...
             key, sc, orientation_labels, ...
             sensor_n_axes, sensor_is_meg);
         n_loaded = n_loaded + 1;
-        fprintf('    BEM-cond: %s (%s) %s\n', key, arr, last_why);
+        fprintf('    %s: %s (%s) %s\n', x.name, key, arr, last_why);
     end
 end
 
@@ -351,7 +366,8 @@ fprintf('Organised %d model configurations.\n', numel(loaded_models));
 n_flag = 0;
 for k = 1:numel(loaded_models)
     key = loaded_models{k};
-    rk  = regexprep(key, '^bem_cond_(.*)_bundle\d+_shift\d+$', 'bem_$1');
+    rk  = regexprep(key, '^(bem|fem)_cond_(.*)_bundle\d+_shift\d+$', '$1_$2');
+    rk  = regexprep(rk, '^fem_remesh_(.*)_k\d+$', 'fem_$1');
     rk  = regexprep(rk, '_(source|sensor)_bundle\d+_shift\d+$', '_$1_original');
     if strcmp(rk, key) || ~isfield(leadfields, rk), continue; end
     r = median_norm(leadfields.(key)) / median_norm(leadfields.(rk));
@@ -378,7 +394,7 @@ save(outfile, 'leadfields', 'abs_max_per_source', 'loaded_models', ...
     'scale_log', 'analysis_array_loaded', '-v7.3');
 writetable(scale_log, fullfile(forward_fields_base, 'leadfield_scale_log.csv'));
 fprintf('\nSaved: %s\n', outfile);
-fprintf('\nNext: run pt_compute_rsq\n');
+fprintf('\nNext: pt_compute_metrics\n');
 
 
 % ---- Local functions ----

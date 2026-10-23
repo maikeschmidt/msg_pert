@@ -3,7 +3,7 @@
 % Builds a small synthetic data set in a temporary folder — a straight cord,
 % a triaxial MSG array and a two-set ESG electrode array, with dipole fields
 % in an unbounded medium plus a mirror-image term standing in for the volume
-% conductor — then runs run_perturbation_analysis on it with every stage
+% conductor — then runs run_all_pert_analysis on it with every stage
 % enabled. The files deliberately use the same mixture of unit conventions
 % as real msg_fwd output (raw BEM per A*m, Biot-Savart already in fT/nAm,
 % conductivity files with an extra x1e15), plus a decoy front-array file, so
@@ -13,8 +13,14 @@
 %   - every stage finishes and writes its main outputs
 %   - only back-array files are loaded, and every perturbed leadfield is
 %     scaled to within 10x of its reference
-%   - stage 5 at zero noise reproduces the stage 2 metrics exactly
-%   - larger source shifts give larger RE (dose response)
+%   - stage 5 at zero noise reproduces the stage 2 metrics exactly, for the
+%     cord median and at the C7 source
+%   - larger source shifts give larger RE (dose response), with an interval
+%     that excludes zero
+%   - the Biot-Savart noise systems exist and skip conductivity
+%   - the anatomy-contribution table and the C7 ranking are written
+%   - FEM lead fields, FEM conductivity draws and the FEM re-meshing control
+%     are loaded and scored, and the FEM noise systems are simulated
 %
 % USAGE:
 %   test_pt_pipeline            % needs no toolboxes beyond MATLAB
@@ -37,19 +43,21 @@ mkdir(tmp);
 fprintf('Synthetic test folder: %s\n', tmp);
 
 % ---- Config pointing at the temporary folder, with fast settings --------
+% config_pert_paths is copied with data_root moved to the temporary folder;
+% config_pert is copied with fast settings appended. Both shadow the
+% repository copies because cfg_dir goes to the top of the path.
+ptxt = fileread(fullfile(root, 'config_pert_paths.m'));
+[i0, i1] = regexp(ptxt, '^data_root\s*=[^\n]*', 'once', 'lineanchors');
+assert(~isempty(i0), 'data_root line not found in config_pert_paths.m');
+ptxt = [ptxt(1:i0-1), sprintf('data_root    = ''%s'';', tmp), ptxt(i1+1:end)];
 txt = fileread(fullfile(root, 'config_pert.m'));
-[tok, s0, s1] = regexp(txt, '''D:\\Simulations\\Pertubations([^'']*)''', ...
-    'tokens', 'start', 'end');
-for k = numel(tok):-1:1
-    rest = strrep(tok{k}{1}, '\', '/');
-    txt  = [txt(1:s0(k)-1) '''' fullfile(tmp, rest) '''' txt(s1(k)+1:end)];
-end
 txt = [txt, sprintf(['\n\n%% ---- test overrides ----\n' ...
-    'stats_n_perm = 500; stats_n_boot = 200; noise_n_real = 4;\n' ...
+    'stats_n_boot = 200; noise_n_real = 4;\n' ...
     'noise_factors = [0.5, 1, 4]; fig_resolution = 50;\n' ...
-    'baseline_topo_src_mm = 100;\n'])];
+    'baseline_topo_src_mm = 100; evoked_src_mm = 120;\n'])];
 cfg_dir = fullfile(tmp, 'cfg'); mkdir(cfg_dir);
 fid = fopen(fullfile(cfg_dir, 'config_pert.m'), 'w'); fwrite(fid, txt); fclose(fid);
+fid = fopen(fullfile(cfg_dir, 'config_pert_paths.m'), 'w'); fwrite(fid, ptxt); fclose(fid);
 
 addpath(root);
 addpath(cfg_dir);                     % shadows the repository config
@@ -95,6 +103,10 @@ for md = {'msg', 'esg'}
             bs = synth('msg', src, msg_pos0, esg_pos0, nsh, 0, 1e15);   % fT/nAm
             save_lf(C.bslaw_path, sprintf('leadfield_geometries_%s_bslaw_back.mat', short), ...
                 'leadfield_bs', bs);
+            % FEM: a slightly different volume-conductor weight, in fT/nAm
+            fem = synth('msg', src, msg_pos0, esg_pos0, nsh, 0.45, 1e15);
+            save_lf(fullfile(C.fem_path, ['geometries_' short]), ...
+                sprintf('cord_leadfield_%s_fem_back.mat', short), 'leadfield_ft', fem);
         end
         if g == 1
             % Decoy front-array file: must never be loaded
@@ -119,16 +131,35 @@ for md = {'msg', 'esg'}
             save_lf(fullfile(C.bem_cond_path, 'geometries_original_source_original'), ...
                 sprintf('leadfield_original_source_original_bem_cond_bundle%d_shift%d_back.mat', b, s), ...
                 'leadfield_cord', lf);
+            if strcmp(md{1}, 'msg')
+                lf = synth('msg', src0, msg_pos0, esg_pos0, zeros(1, 3), ...
+                     0.45 * (1 + d(1) - d(2)), (1 - 0.3 * mean(d)) * 1e15);
+                save_lf(fullfile(C.fem_path, 'geometries_original_source_original'), ...
+                    sprintf('cord_leadfield_original_source_original_fem_cond_bundle%d_shift%d_back.mat', b, s), ...
+                    'leadfield_ft', lf);
+            end
+        end
+    end
+    % FEM re-meshing: the unshifted FEM with a small random perturbation
+    if strcmp(md{1}, 'msg')
+        fem0 = synth('msg', src0, msg_pos0, esg_pos0, zeros(1, 3), 0.45, 1e15);
+        for k = 1:numel(fem_remesh_seeds)
+            lf = fem0;
+            lf.leadfield = cellfun(@(x) x .* (1 + 0.01 * randn(size(x))), lf.leadfield, ...
+                'UniformOutput', false);
+            save_lf(fullfile(C.fem_path, 'geometries_original_source_original'), ...
+                sprintf('cord_leadfield_original_source_original_fem_remesh%d_back.mat', k), ...
+                'leadfield_ft', lf);
         end
     end
 end
 fprintf('Synthetic leadfields written.\n\n');
 
 % ---- Run every stage ----------------------------------------------------
-run_perturbation_analysis;
+run_all_pert_analysis;
 
 % ---- Checks -------------------------------------------------------------
-% run_perturbation_analysis starts with clearvars, so re-derive what is needed
+% run_all_pert_analysis starts with clearvars, so re-derive what is needed
 config_pert;
 tmp = fileparts(fileparts(stage_results_dir));
 n_fail = 0;
@@ -139,9 +170,19 @@ expect = {fullfile('1_baseline', 'baseline_model_type.csv'), ...
           fullfile('3_within_esg', 'within_descriptive.tex'), ...
           fullfile('4_msg_vs_esg', 'modality_stats.csv'), ...
           fullfile('4_msg_vs_esg', 'modality_interaction.csv'), ...
-          fullfile('5_noise', 'noise_combined.csv'), ...
-          fullfile('5_noise', 'noise_system_stats.csv'), ...
-          fullfile('6_summary', 'summary_msg.tex')};
+          fullfile('2_within_msg', 'within_anatomy.csv'), ...
+          fullfile('2_within_msg', 'anatomy_contribution_bem.png'), ...
+          fullfile('2_within_msg', 'anatomy_contribution_fem.png'), ...
+          fullfile('2_within_msg', 'within_fem_remesh.csv'), ...
+          fullfile('2_within_msg', 'fem_remesh_floor.png'), ...
+          fullfile('5_noise', 'data', 'noise_squid_msg_fem.mat'), ...
+          fullfile('5_noise', 'c7', 'noise_combined.csv'), ...
+          fullfile('5_noise', 'c7', 'noise_system_stats.csv'), ...
+          fullfile('5_noise', 'cord', 'noise_combined.csv'), ...
+          fullfile('5_noise', 'stage5_long.csv'), ...
+          fullfile('5_noise', 'data', 'noise_squid_msg_bs.mat'), ...
+          fullfile('6_summary', 'summary_msg.tex'), ...
+          fullfile('6_summary', 'summary_msg_c7.tex')};
 for k = 1:numel(expect)
     n_fail = n_fail + report(['exists: ' expect{k}], ...
         double(isfile(fullfile(stage_results_dir, expect{k}))), 1, 0);
@@ -160,12 +201,34 @@ NS = load(fullfile(stage_results_dir, '5_noise', 'data', 'noise_squid_msg.mat'),
 v2 = pt_shift_summary(PM.pert.source.M.bem, 're', numel(PM.axcfg_ids), numel(PM.ori_labels));
 v5 = NS.pert.source.cm.re(2:end, 1, 1, end, end);
 n_fail = n_fail + report('noise level 0 == stage 2 (max |diff|)', max(abs(v2 - v5)), 0, 1e-9);
+c2 = PM.pert.source.M.bem.re(:, NS.c7_idx, end, end);
+c5 = NS.pert.source.c7.re(2:end, 1, 1, end, end);
+n_fail = n_fail + report('C7 level 0 == stage 2 at C7 (max |diff|)', max(abs(c2 - c5)), 0, 1e-9);
+n_fail = n_fail + report('C7 source is the nearest to evoked_src_mm', ...
+    abs(NS.c7_mm - evoked_src_mm), 0, src_spacing_mm / 2);
+
+n_fail = n_fail + report('FEM conductivity draws scored', ...
+    double(ismember('fem', PM.pert.cond.methods)), 1, 0);
+n_fail = n_fail + report('FEM re-meshing floor scored, not a type', ...
+    double(isfield(PM, 'remesh') && isfield(PM.remesh.M, 'fem') && ~isfield(PM.pert, 'remesh')), 1, 0);
+NF = load(fullfile(stage_results_dir, '5_noise', 'data', 'noise_squid_msg_fem.mat'), 'NS'); NF = NF.NS;
+n_fail = n_fail + report('FEM noise system has conductivity rows', ...
+    double(isfield(NF.pert, 'cond')), 1, 0);
+
+NB = load(fullfile(stage_results_dir, '5_noise', 'data', 'noise_squid_msg_bs.mat'), 'NS'); NB = NB.NS;
+n_fail = n_fail + report('Biot-Savart system has no conductivity rows', ...
+    double(~isfield(NB.pert, 'cond')), 1, 0);
 
 T = readtable(fullfile(stage_results_dir, '2_within_msg', 'within_stats.csv'), 'TextType', 'char');
 r = T(strcmp(T.family, 'dose_response') & strcmp(T.subset, 'Source space') & ...
       strcmp(T.metric, 'RE (%)') & strcmp(T.method, 'BEM') & ...
       strcmp(T.orientation, 'ALL') & strcmp(T.axis_set, 'Array'), :);
-n_fail = n_fail + report('source dose response rho > 0.5', double(r.effect(1) > 0.5), 1, 0);
+n_fail = n_fail + report('source dose response rho > 0.5', double(r.estimate(1) > 0.5), 1, 0);
+n_fail = n_fail + report('source dose response interval excludes 0', double(r.separated(1)), 1, 0);
+
+L5 = readtable(fullfile(stage_results_dir, '5_noise', 'stage5_long.csv'), 'TextType', 'char');
+n_fail = n_fail + report('stage 5 long rows carry both sites', ...
+    double(all(ismember({'C7', 'cord'}, unique(L5.site)))), 1, 0);
 
 fprintf('\n%d failure(s). Outputs kept in %s\n', n_fail, tmp);
 

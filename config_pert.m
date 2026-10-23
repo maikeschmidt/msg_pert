@@ -10,12 +10,12 @@
 % MODALITIES:
 %   MSG (triaxial magnetometers) and ESG (surface electrodes) are configured
 %   side by side in mods_cfg. The active one is chosen by pt_modality, which
-%   run_perturbation_analysis sets per iteration, so nothing has to be edited
+%   run_all_pert_analysis sets per iteration, so nothing has to be edited
 %   between modalities. The selected modality's fields are then unpacked into
 %   the loose variables listed below.
 %
 % VARIABLES DEFINED:
-%   Paths (per modality):
+%   Paths (per modality, all taken from config_pert_paths):
 %     geoms_path           - Path to original geometry .mat from msg_coreg
 %     perturbed_geoms_path - Output path for perturbed geometry .mat files
 %     forward_fields_base  - Path to leadfield .mat files (from msg_fwd runs)
@@ -26,7 +26,8 @@
 %     sensor_n_axes        - 3 for triaxial MSG, 2 for ESG. Declared, not
 %                            inferred: an electrode count can also divide by 3
 %     sensor_is_meg        - true for MSG, false for ESG
-%     have_bem / have_fem / have_bslaw / have_sphere / have_bem_cond
+%     have_bem / have_fem / have_bslaw / have_sphere / have_bem_cond /
+%     have_fem_cond / have_fem_remesh
 %                          - which forward models were computed in msg_fwd
 %
 %   Base geometry:
@@ -38,7 +39,9 @@
 %
 %   Source shift parameters (24 configs: 3 bundles × 8 random shifts):
 %     source_shift_vectors  - {3×1} cell: each is [8×3] [dx,dy,dz] in mm.
-%                             PASTE from pt_generate_source_shifts output.
+%                             Read from pert_source_shift_vectors.mat, which
+%                             pt_generate_source_shifts saves next to the
+%                             geometries; the block below is the fallback.
 %     n_source_bundles      - 3
 %     n_source_shifts       - 8 (shifts per bundle)
 %     sensitivity_ref_key   - Key for the original (unshifted) source model
@@ -51,9 +54,9 @@
 %
 %   Sensor shift parameters (24 configs: 3 bundles × 8 random shifts):
 %     sensor_shift_vectors          - {3 x 1} cell: each is [8 x 3] matrix of
-%                                     [dx,dy,dz] shifts in mm. SET THESE after
-%                                     generating shifts in pt_generate_sensor_shifts.m
-%                                     (or paste from the printed output).
+%                                     [dx,dy,dz] shifts in mm. Read from
+%                                     pert_sensor_shift_vectors.mat when it
+%                                     exists (pt_generate_sensor_shifts saves it).
 %     n_sensor_bundles              - 3
 %     n_sensor_shifts               - 8 (shifts per bundle)
 %     sensor_sensitivity_ref_key    - Key for original (unshifted) sensor model
@@ -91,20 +94,21 @@
 %     stage_results_dir    - output root; one numbered folder per stage
 %     pert_types, pert_type_display, pert_type_colors, bundle_names
 %     metric_orientations, headline_orientation, ori_titles
-%     stats_n_perm, stats_n_boot, stats_alpha, stats_seed
+%     stats_n_boot, stats_ci_level, stats_cover_pct, stats_seed
 %     source_sensor_paired - source and sensor shift k share a shift vector
 %     msg_esg_paired       - per type: is shift k the same change in MSG and ESG
 %     modality_compare_method - forward model used for MSG vs ESG
 %     baseline_models, baseline_pairs, baseline_topo_src_mm   (stage 1)
-%     noise_systems, noise_* waveform and sweep settings        (stage 5)
+%     noise_systems, evoked_src_mm, noise_* waveform and sweep   (stage 5)
 %     fig_resolution       - PNG resolution (dpi)
 %
 % NOTES:
-%   - Set the four path variables and base_geom_name before running any script
+%   - Every path comes from config_pert_paths.m: set data_root there, and
+%     base_geom_name here, before running any script
 %   - base_geom_name must NOT include the 'geometries_' prefix — that prefix
 %     is attached automatically in file search patterns
-%   - Paste sensor_shift_vectors from the output of pt_generate_sensor_shifts
-%     so that displacement vs r² plots can use actual mm values on the x-axis
+%   - The shift vectors are read from the files the generators save, so the
+%     sizes on every dose-response axis are the shifts actually applied
 %
 % REPOSITORY:
 %   https://github.com/maikeschmidt/msg_pert
@@ -121,7 +125,7 @@
 % USER CONFIGURATION — both modalities in one place (no switching)
 % =========================================================================
 % MSG and ESG are configured side by side here. The pipeline loops over both
-% (run_perturbation_analysis), so you do NOT edit paths or flags between
+% (run_all_pert_analysis), so you do NOT edit paths or flags between
 % modalities. Each modality carries its own geometry + leadfield paths, method
 % flags, sensor-axis count, and results (figures) folder. A third path holds the
 % combined MSG-vs-ESG comparison.
@@ -130,24 +134,29 @@
 cfg_dir = fileparts(mfilename('fullpath'));
 if ~isempty(cfg_dir); addpath(cfg_dir); end
 
+% Every path: data_root, results_root and the folders under them
+config_pert_paths;
+
 base_geom_name = 'original';   % SET THIS: short stem in file names, WITHOUT the
                                % leading 'geometries_' prefix (shared by both
                                % modalities). Default dataset: 'original'.
 
 % ---- MSG (triaxial magnetometer array) ----------------------------------
-mods_cfg.msg.geoms_path           = 'D:\Simulations\Pertubations\geometries';         % SET THIS
-mods_cfg.msg.perturbed_geoms_path = 'D:\Simulations\Pertubations\geometries';         % SET THIS
-mods_cfg.msg.forward_fields_base  = 'D:\Simulations\Pertubations\fields\mag';         % SET THIS (holds pert_*_rsq.mat + leadfields_organised.mat)
-mods_cfg.msg.bem_path             = 'D:\Simulations\Pertubations\fields\mag\bem';      % SET THIS
-mods_cfg.msg.bslaw_path           = 'D:\Simulations\Pertubations\fields\mag\bs_law';  % SET THIS
-mods_cfg.msg.fem_path             = '';                                                 % SET THIS
-mods_cfg.msg.sphere_path          = '';                                               % SET THIS (optional)
-mods_cfg.msg.bem_cond_path        = 'D:\Simulations\Pertubations\fields\mag\bem_cond_msg'; % SET THIS
-mods_cfg.msg.save_base_dir        = 'D:\Simulations\Pertubations\results\msg';        % SET THIS: MSG figures/tables
+mods_cfg.msg.geoms_path           = msg_geoms_dir;
+mods_cfg.msg.perturbed_geoms_path = msg_geoms_dir;
+mods_cfg.msg.forward_fields_base  = msg_fields_dir;     % holds leadfields_organised.mat, pert_metrics.mat
+mods_cfg.msg.bem_path             = msg_bem_dir;
+mods_cfg.msg.bslaw_path           = msg_bslaw_dir;
+mods_cfg.msg.fem_path             = msg_fem_dir;
+mods_cfg.msg.sphere_path          = msg_sphere_dir;
+mods_cfg.msg.bem_cond_path        = msg_bem_cond_dir;
+mods_cfg.msg.save_base_dir        = msg_results_dir;
 mods_cfg.msg.sensor_n_axes        = 3;
 mods_cfg.msg.sensor_is_meg        = true;
 mods_cfg.msg.have_bem             = true;
-mods_cfg.msg.have_fem             = false;
+mods_cfg.msg.have_fem             = true;
+mods_cfg.msg.have_fem_cond        = true;    % FEM conductivity draws (same as BEM's)
+mods_cfg.msg.have_fem_remesh      = true;    % FEM re-meshing control (fem_remesh_seeds)
 mods_cfg.msg.have_bslaw           = true;
 mods_cfg.msg.have_sphere          = false;
 mods_cfg.msg.have_bem_cond        = true;
@@ -159,19 +168,21 @@ mods_cfg.msg.sensor_shift_dims    = [1 2 3];   % axes the sensor shift was appli
 mods_cfg.msg.unit                 = 'fT/nAm';
 
 % ---- ESG (tangential/radial surface electrodes) -------------------------
-mods_cfg.esg.geoms_path           = 'D:\Simulations\Pertubations\geoms_elec';         % SET THIS
-mods_cfg.esg.perturbed_geoms_path = 'D:\Simulations\Pertubations\geoms_elec';         % SET THIS
-mods_cfg.esg.forward_fields_base  = 'D:\Simulations\Pertubations\fields\elec';        % SET THIS
-mods_cfg.esg.bem_path             = 'D:\Simulations\Pertubations\fields\elec\bem_elec';    % SET THIS
-mods_cfg.esg.bslaw_path           = '';                                               % Biot-Savart is magnetic — N/A for ESG
-mods_cfg.esg.fem_path             = '';                                                  % SET THIS
-mods_cfg.esg.sphere_path          = '';
-mods_cfg.esg.bem_cond_path        = 'D:\Simulations\Pertubations\fields\elec\bem_cond_esg'; % SET THIS
-mods_cfg.esg.save_base_dir        = 'D:\Simulations\Pertubations\results\esg';        % SET THIS: ESG figures/tables
+mods_cfg.esg.geoms_path           = esg_geoms_dir;
+mods_cfg.esg.perturbed_geoms_path = esg_geoms_dir;
+mods_cfg.esg.forward_fields_base  = esg_fields_dir;
+mods_cfg.esg.bem_path             = esg_bem_dir;
+mods_cfg.esg.bslaw_path           = esg_bslaw_dir;   % Biot-Savart is magnetic — none for ESG
+mods_cfg.esg.fem_path             = esg_fem_dir;
+mods_cfg.esg.sphere_path          = esg_sphere_dir;
+mods_cfg.esg.bem_cond_path        = esg_bem_cond_dir;
+mods_cfg.esg.save_base_dir        = esg_results_dir;
 mods_cfg.esg.sensor_n_axes        = 2;
 mods_cfg.esg.sensor_is_meg        = false;
 mods_cfg.esg.have_bem             = true;
-mods_cfg.esg.have_fem             = false;
+mods_cfg.esg.have_fem             = false;   % DUNEuro solve is MEG only
+mods_cfg.esg.have_fem_cond        = false;
+mods_cfg.esg.have_fem_remesh      = false;
 mods_cfg.esg.have_bslaw           = false;   % no Biot-Savart for ESG
 mods_cfg.esg.have_sphere          = false;
 mods_cfg.esg.have_bem_cond        = true;
@@ -189,9 +200,6 @@ mods_cfg.esg.unit                 = 'uV/nAm';
 % radial with MSG Z. Every comparison is ALSO made on the whole array (all
 % axes stacked), which needs no matching and is the headline cross-modality
 % number.
-
-% ---- Combined (MSG vs ESG comparison output) ----------------------------
-combined_results_dir = 'D:\Simulations\Pertubations\results\combined';   % SET THIS
 
 % Which modalities the master loop should run
 pert_modalities = {'msg', 'esg'};   % SET THIS: e.g. {'msg'} to run MSG only
@@ -214,7 +222,7 @@ unit_scale_mode = 'auto';
 % =========================================================================
 % ACTIVATE THE SELECTED MODALITY
 % =========================================================================
-% The active modality is chosen by pt_modality (set by run_perturbation_analysis
+% The active modality is chosen by pt_modality (set by run_all_pert_analysis
 % as it loops). For standalone runs of a single script it falls back to 'msg' —
 % or force it here / call pt_modality('set','esg') before running.
 active_modality = pt_modality('get');
@@ -240,6 +248,8 @@ have_fem             = M.have_fem;
 have_bslaw           = M.have_bslaw;
 have_sphere          = M.have_sphere;
 have_bem_cond        = M.have_bem_cond;
+have_fem_cond        = M.have_fem_cond;
+have_fem_remesh      = M.have_fem_remesh;
 axis_names           = M.axis_names;
 radial_axis          = M.radial_axis;
 
@@ -266,7 +276,9 @@ n_source_bundles = 3;
 n_source_shifts  = 8;
 n_src_total      = n_source_bundles * n_source_shifts;   % = 24
 
-% PASTE SHIFT VECTORS HERE after running pt_generate_source_shifts
+% Shift vectors, one cell per bundle. pt_generate_source_shifts saves the
+% vectors it applies and they replace these (below); paste only if that file
+% is missing
 % Each cell is one bundle; each row is one [dx dy dz] shift in mm.
 source_shift_vectors = {
     % Bundle 1 — ~2 mm (small): 8×3 matrix — PASTE from pt_generate_source_shifts output
@@ -297,6 +309,15 @@ source_shift_vectors = {
       -7.7, +9.0, +12.7;
       -9.2, -12.8, -12.8]
 };
+
+% The generator saves the vectors it applied next to the geometries. When
+% that file exists it replaces the block above, so the perturbation sizes
+% always match the geometries actually analysed.
+sv_file = fullfile(perturbed_geoms_path, 'pert_source_shift_vectors.mat');
+if isfile(sv_file)
+    tmp_sv = load(sv_file, 'shift_vectors');
+    source_shift_vectors = tmp_sv.shift_vectors(:)';
+end
 
 sensitivity_ref_key   = [base_geom_name '_source_original'];
 sensitivity_keys      = cell(1, n_src_total);
@@ -337,7 +358,7 @@ n_sensor_bundles = 3;
 n_sensor_shifts  = 8;   % shifts per bundle
 n_sen_total      = n_sensor_bundles * n_sensor_shifts;   % = 24
 
-% PASTE SHIFT VECTORS HERE after running pt_generate_sensor_shifts
+% Shift vectors, one cell per bundle; replaced by the saved file (below)
 % Each cell is one bundle; each row is one [dx dy dz] shift in mm.
 sensor_shift_vectors = {
     % Bundle 1 — ~2 mm (small): 8×3 matrix
@@ -368,6 +389,14 @@ sensor_shift_vectors = {
       -7.7,   9.0,  12.7;
       -9.2, -12.8, -12.8]
 };
+% Replaced by the vectors pt_generate_sensor_shifts saved, when present
+sv_file = fullfile(perturbed_geoms_path, 'pert_sensor_shift_vectors.mat');
+if isfile(sv_file)
+    tmp_sv = load(sv_file, 'shift_vectors');
+    sensor_shift_vectors = tmp_sv.shift_vectors(:)';
+end
+clear sv_file tmp_sv
+
 % Reference and shifted model keys
 sensor_sensitivity_ref_key   = [base_geom_name '_sensor_original'];
 sensor_sensitivity_keys      = cell(1, n_sen_total);
@@ -407,14 +436,15 @@ sensor_bundle_colors = [
 % Bundle 2 — medium (up to +10%): σ × (1 + U(0, 0.10))
 % Bundle 3 — large  (up to +50%): σ × (1 + U(0, 0.50))
 %
-% Run run_conductivity_perturbation.m (in msg_fwd) to generate the files,
-% then set have_bem_cond = true for that modality in the block above.
+% run_all_perturbations computes them (BEM and, for MSG, FEM, with the same
+% draws so the two solvers are paired); have_bem_cond / have_fem_cond per
+% modality switch them on.
 
 n_cond_bundles        = 3;
 n_cond_shifts         = 8;
 n_cond_total          = n_cond_bundles * n_cond_shifts;   % = 24
 cond_bundle_pct       = [0.05, 0.10, 0.50];               % fractional range per bundle
-cond_seed             = 99;    % must match seed in run_conductivity_perturbation.m
+cond_seed             = 99;    % same as msg_fwd's run_conductivity_perturbation
 n_cond_compartments   = 5;     % SET THIS: number of BEM compartments in your geometry
 
 cond_sensitivity_ref_key   = [base_geom_name '_source_original'];
@@ -435,6 +465,25 @@ for b = 1:n_cond_bundles
 end
 
 cond_bundle_display = {'+5% (small)', '+10% (medium)', '+50% (large)'};
+
+
+% =========================================================================
+% FEM MESHING (MSG only)
+% =========================================================================
+% Settings of msg_fwd's production FEM (run_fem_leadfields). TetGen draws
+% its region seed points at random, so two meshes of one geometry differ;
+% every production mesh here uses fem_mesh_seed. Sensor shifts and
+% conductivity draws reuse the unshifted mesh and carry no re-meshing.
+% Source shifts need their own mesh, so the unshifted geometry is also
+% meshed with each of fem_remesh_seeds: the spread of those lead fields is
+% the re-meshing floor that FEM source-shift effects are read against
+% (stage 2, and a row in the stage-6 ranking).
+fem_maxvol_mm3    = 500;     % mm^3, as msg_fwd; never a raw m^3 literal
+fem_reduce_torso  = true;    % torso decimated to fem_torso_keep before meshing
+fem_torso_keep    = 0.5;
+fem_mesh_seed     = 1;
+fem_remesh_seeds  = 2:9;     % 8 re-meshes of the unshifted geometry
+fem_cond_nominal  = [0.33, 0.33/40, 0.62, 0.05, 0.23];   % cord, bone, heart, lungs, torso (S/m)
 
 % Bundle colours (green family — distinct from source orange and sensor blue)
 cond_bundle_colors = [
@@ -459,8 +508,8 @@ cond_bundle_colors = [
 % model), so the ESG list is BEM only — otherwise the analysis would look for
 % bslaw_ ESG leadfields that do not exist.
 if sensor_is_meg
-    fwd_methods       = {'bslaw', 'bem'};   % SET THIS: MSG methods
-    fwd_method_labels = {'Biot-Savart', 'BEM'};
+    fwd_methods       = {'bslaw', 'bem', 'fem'};   % SET THIS: MSG methods
+    fwd_method_labels = {'Biot-Savart', 'BEM', 'FEM'};
 else
     fwd_methods       = {'bem'};            % ESG: BEM only
     fwd_method_labels = {'BEM'};
@@ -501,7 +550,8 @@ pub_marker_size  = 7;
 % pt_noise_analyse and pt_summary_table. Each stage writes to its own
 % numbered subfolder of stage_results_dir.
 
-stage_results_dir = 'D:\Simulations\Pertubations\results\staged';   % SET THIS
+% stage_results_dir (one numbered subfolder per stage) is set in
+% config_pert_paths
 
 % Perturbation types, in reporting order, and how they are labelled
 pert_types        = {'source', 'sensor', 'cond'};
@@ -528,12 +578,16 @@ modality_colors = struct('msg', [0.49 0.18 0.56], ...   % purple
 % ---- Statistics ---------------------------------------------------------
 % The unit of observation is one perturbation REALISATION (one random shift,
 % or one random conductivity draw), summarised by its median over cord
-% positions. With 8 realisations per bundle, bundle-level tests are small-n
-% by design; the pooled rows (24 per type) carry more power.
-stats_n_perm = 10000;   % permutations (tests between 8 vs 8 are enumerated exactly)
-stats_n_boot = 10000;   % bootstrap draws for median CIs
-stats_alpha  = 0.05;    % FDR level
-stats_seed   = 2026;    % RNG seed for reproducible p-values and CIs
+% positions. Every value is computed exactly from a simulated geometry, so,
+% as in msg_fwd, results are reported as intervals and not as significance
+% tests: medians and differences with percentile bootstrap intervals over
+% realisations, the IQR, and a coverage percentile. A comparison is marked
+% "separated" when the interval of its difference excludes zero. With 8
+% realisations per bundle the bundle-level intervals are wide by design.
+stats_n_boot    = 10000;   % bootstrap draws
+stats_ci_level  = 0.95;    % interval coverage
+stats_cover_pct = 95;      % coverage percentile ("in 95% of realisations, RE <= X")
+stats_seed      = 2026;    % RNG seed for reproducible intervals
 
 % Source and sensor shifts are drawn from the SAME shift vectors (see the two
 % blocks above), so shift k of one is paired with shift k of the other. Set
@@ -553,14 +607,16 @@ modality_compare_method = 'bem';
 baseline_models = {
     'msg', 'bslaw', 'MSG — Biot-Savart'
     'msg', 'bem',   'MSG — BEM'
+    'msg', 'fem',   'MSG — FEM'
     'esg', 'bem',   'ESG — BEM'
 };
-baseline_model_colors = [0.80 0.15 0.10; 0.49 0.18 0.56; 0.20 0.63 0.35];
+baseline_model_colors = [0.80 0.15 0.10; 0.49 0.18 0.56; 0.55 0.10 0.75; 0.20 0.63 0.35];
 
 % Forward-model-type comparisons: {modality, reference method, comparison
 % method, label}. The reference is the RE denominator.
 baseline_pairs = {
     'msg', 'bem', 'bslaw', 'Biot-Savart vs BEM'
+    'msg', 'bem', 'fem',   'FEM vs BEM'
 };
 
 % Cord positions (mm from the top of the source space) for the topoplots
@@ -570,28 +626,64 @@ baseline_topo_src_mm = [75, 250, 450];   % SET THIS
 % The measured field pattern is estimated from trial-averaged data by
 % projecting onto the known source waveform w:
 %     g_hat = Y w / (w'w) = g + noise,   noise s.d. = sigma / ||w||
-% and scored with the same four metrics against the noise-free ORIGINAL
-% field. At zero noise this reproduces stages 2-4 exactly.
+% and scored with the same four metrics against the noise-free unperturbed
+% field of the same forward model. At zero noise this reproduces stages 2-4
+% exactly.
+%
+% Each system is one sensor technology measured through one forward model.
+% The BEM systems are the realistic case, scored against the unperturbed
+% MRI-derived BEM field. The Biot-Savart systems carry the same sensors
+% through the anatomy-free model: no volume conductor to attenuate or
+% redistribute the field, so they are the upper bound on what an MSG system
+% could recover, scored against their own unperturbed field. Conductivity
+% perturbations do not apply to Biot-Savart and are skipped for it. The FEM
+% systems carry the same sensors through the second volume-conductor model
+% (MSG only), scored against the unperturbed FEM field, so the realistic
+% result can be read for both solvers. Every system shares the noise draws
+% of the BEM system with the same sensors.
 %
 % Noise floors and bandwidths match simulations/config_sim.m; keep the two
 % in step if you change either.
 noise_systems = struct( ...
-    'label',        {'SQUID MSG',  'OP-MSG',     'ESG'}, ...
-    'short',        {'squid_msg',  'op_msg',     'esg'}, ...
-    'modality',     {'msg',        'msg',        'esg'}, ...
-    'method',       {'bem',        'bem',        'bem'}, ...
-    'density',      {5,            20,           1}, ...        % per sqrt(Hz)
-    'unit_txt',     {'fT/sqrt(Hz)', 'fT/sqrt(Hz)', 'uV/sqrt(Hz)'}, ...
-    'bandwidth_hz', {1000,         150,          Inf}, ...
-    'color',        {[0.10 0.30 0.80], [0.10 0.60 0.20], [0.80 0.15 0.10]});
+    'label',        {'SQUID MSG',  'OP-MSG',     'ESG', ...
+                     'SQUID MSG (Biot-Savart)', 'OP-MSG (Biot-Savart)', ...
+                     'SQUID MSG (FEM)', 'OP-MSG (FEM)'}, ...
+    'short',        {'squid_msg',  'op_msg',     'esg', 'squid_msg_bs', 'op_msg_bs', ...
+                     'squid_msg_fem', 'op_msg_fem'}, ...
+    'modality',     {'msg',        'msg',        'esg', 'msg',   'msg',   'msg', 'msg'}, ...
+    'method',       {'bem',        'bem',        'bem', 'bslaw', 'bslaw', 'fem', 'fem'}, ...
+    'density',      {5,            20,           1,     5,       20,      5,     20}, ...   % per sqrt(Hz)
+    'unit_txt',     {'fT/sqrt(Hz)', 'fT/sqrt(Hz)', 'uV/sqrt(Hz)', 'fT/sqrt(Hz)', ...
+                     'fT/sqrt(Hz)', 'fT/sqrt(Hz)', 'fT/sqrt(Hz)'}, ...
+    'bandwidth_hz', {1000,         150,          Inf,   1000,    150,     1000,  150}, ...
+    'color',        {[0.10 0.30 0.80], [0.10 0.60 0.20], [0.80 0.15 0.10], ...
+                     [0.55 0.70 0.95], [0.60 0.85 0.60], ...
+                     [0.35 0.15 0.60], [0.70 0.45 0.85]});
 
-% Evoked source waveform: Gaussian-windowed sinusoid (as config_sim)
+% Evoked response: the spinal N13 after median nerve stimulation, a
+% stationary generator in the dorsal horn at the C6-C7 level. One source at
+% C7 carries it; that source is the headline of stage 5, and the same
+% response placed at every cord position is reported alongside.
+%
+% evoked_src_mm is C7's distance along the cord from the top of the source
+% space, in the units of the cord axis of every figure (source index x
+% src_spacing_mm). The nearest kept source is used, and stage 5 reports
+% which one.
+evoked_src_mm   = 60;       % SET THIS: cord distance of C7 (mm)
+evoked_src_name = 'C7';
+
+% Source waveform: a Gaussian-windowed cosine peaking at noise_latency, so
+% the response peaks at 13 ms, inside the 8-16 ms spinal component window
+% used by msg_analysis. noise_freq = 0 gives a single monophasic peak
+% (N13-like); a non-zero frequency gives a damped oscillation. With the
+% matched filter used here only ||w|| affects the result, so the shape
+% matters through the energy it carries.
 noise_fs        = 1500;     % Hz
 noise_duration  = 0.100;    % s
-noise_freq      = 70;       % Hz
+noise_freq      = 0;        % Hz (0 = monophasic)
 noise_peak_nAm  = 3;        % nA*m
-noise_latency   = 0.025;    % s
-noise_env_sd    = 0.005;    % s
+noise_latency   = 0.013;    % s  (N13)
+noise_env_sd    = 0.002;    % s  (about 5 ms full width at half maximum)
 noise_n_trials  = 8000;     % trials averaged
 
 % Noise levels as multiples of each system's own floor. 0 is always added,
@@ -608,8 +700,12 @@ noise_reference_factor = 1; % level used for the "realistic" comparisons
 noise_detect_pct  = 95;
 noise_detect_rate = 0.8;
 
-% Systems compared against each other at every noise level
-noise_compare_pairs = {'squid_msg', 'esg'; 'op_msg', 'esg'; 'squid_msg', 'op_msg'};
+% Systems compared against each other at every noise level. Rows 4-5 set
+% each MSG technology against its Biot-Savart upper bound, rows 6-7 against
+% the same sensors through the FEM.
+noise_compare_pairs = {'squid_msg', 'esg'; 'op_msg', 'esg'; 'squid_msg', 'op_msg'; ...
+                       'squid_msg_bs', 'squid_msg'; 'op_msg_bs', 'op_msg'; ...
+                       'squid_msg_fem', 'squid_msg'; 'op_msg_fem', 'op_msg'};
 
 % Figure resolution (dpi)
 fig_resolution = 600;

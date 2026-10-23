@@ -5,11 +5,15 @@
 %     including degenerate columns
 %   - the noise decomposition E||g + n - a||^2 = ||g - a||^2 + E||n||^2 used
 %     by the stage-5 error budget
-%   - pt_perm_test2: exact enumeration, symmetric null, p never 0 by Monte Carlo
-%   - pt_cliffs_delta, pt_spearman_perm and pt_quantile against hand values
-%   - pt_compare_two chooses the paired / unpaired route correctly
+%   - pt_rank_corr and pt_quantile against hand values; pt_quantile agrees
+%     with msg_fwd's pctl
+%   - pt_compare_two chooses the paired / unpaired route and its interval
+%     separates clear differences and covers zero for none
+%   - pt_describe's coverage percentile and its vectorised bootstrap agree
+%     with pctl
 %   - pt_unit_scale picks the right factor for every writer convention
-%   - pt_fdr_by_group corrects within groups only
+%   - pt_compute_leadfields writes msg_fwd's file layout and skips existing
+%     files (Biot-Savart route, which needs no FieldTrip)
 %
 % USAGE:
 %   Run from anywhere with msg_pert and msg_fwd as sibling folders:
@@ -55,25 +59,14 @@ re2_emp  = mean(sum((g + N - a).^2, 1)) / sum(a.^2);
 re2_pred = (sum((g - a).^2) + 300 * sd^2) / sum(a.^2);
 n_fail = n_fail + check('E RE^2 = RE_pert^2 + RE_noise^2', re2_emp, re2_pred, 0.01*re2_pred);
 
-% 3. pt_perm_test2 ------------------------------------------------------
-x = [5 6 7 8]; y = [1 2 3 4];
-p = pt_perm_test2(x, y, 1e5, 'right');           % 70 relabellings, exact
-n_fail = n_fail + check('perm2 exact, complete separation', p, 1/70, 1e-12);
-p = pt_perm_test2(x, y, 1e5, 'both');
-n_fail = n_fail + check('perm2 exact two-sided', p, 2/70, 1e-12);
-p = pt_perm_test2(randn(30,1) + 5, randn(30,1), 2000, 'both');
-n_fail = n_fail + check('perm2 Monte Carlo p never 0', p, 1/2001, 1e-12);
-p = pt_perm_test2(randn(8,1), randn(8,1), 12870, 'both');
-n_fail = n_fail + check('perm2 null p in (0,1]', double(p > 0 && p <= 1), 1, 0);
-
-% 4. Effect sizes and correlation ---------------------------------------
-n_fail = n_fail + check('Cliff delta, complete separation', pt_cliffs_delta(x, y), 1, 0);
-n_fail = n_fail + check('Cliff delta, identical groups',   pt_cliffs_delta(y, y), 0, 0);
-[rho, p] = pt_spearman_perm(1:10, (1:10).^3, 5000);
+% 3-4. Rank correlation with interval ----------------------------------
+[rho, ci] = pt_rank_corr(1:10, (1:10).^3, 2000);
 n_fail = n_fail + check('Spearman monotone = 1', rho, 1, 1e-12);
-n_fail = n_fail + check('Spearman monotone p small', double(p < 0.01), 1, 0);
-[rho, ~] = pt_spearman_perm(1:10, 10:-1:1, 100);
+n_fail = n_fail + check('Spearman monotone CI excludes 0', double(ci(1) > 0), 1, 0);
+[rho, ~] = pt_rank_corr(1:10, 10:-1:1, 100);
 n_fail = n_fail + check('Spearman reversed = -1', rho, -1, 1e-12);
+[~, ci] = pt_rank_corr(1:3, 1:3, 100);
+n_fail = n_fail + check('Spearman n < 4 -> NaN CI', double(all(isnan(ci))), 1, 0);
 
 % 5. Quantiles match MATLAB's prctile convention -------------------------
 v = [1 2 3 4 10];
@@ -81,13 +74,32 @@ q = pt_quantile(v, [25 50 75], 2);
 n_fail = n_fail + check('quantile 25', q(1), 1.75, 1e-12);
 n_fail = n_fail + check('quantile 50', q(2), 3,    1e-12);
 n_fail = n_fail + check('quantile 75', q(3), 5.5,  1e-12);
+w = randn(37, 1);
+n_fail = n_fail + check('pt_quantile == pctl (p90)', pt_quantile(w, 90, 1), pctl(w, 90), 1e-12);
 
-% 6. pt_compare_two routes ---------------------------------------------
-R = pt_compare_two([1 2 3 4 5 6]', [0 1 2 3 4 5]', true);
-n_fail = n_fail + check('paired: all diffs +1 -> rank-biserial 1', R.effect, 1, 1e-12);
+% 6. pt_compare_two routes and intervals --------------------------------
+R = pt_compare_two([1 2 3 4 5 6]', [0 1 2 3 4 5]', true, 2000);
 n_fail = n_fail + check('paired: median diff', R.median_diff, 1, 1e-12);
-R = pt_compare_two([5 6 7 8]', [1 2 3 4]', false);
-n_fail = n_fail + check('unpaired: Cliff delta 1', R.effect, 1, 1e-12);
+n_fail = n_fail + check('paired: constant diff -> CI [1, 1]', R.ci_hi - R.ci_lo, 0, 1e-12);
+n_fail = n_fail + check('paired: separated', double(R.separated), 1, 0);
+R = pt_compare_two([5 6 7 8]', [1 2 3 4]', false, 2000);
+n_fail = n_fail + check('unpaired: difference of medians', R.median_diff, 4, 1e-12);
+n_fail = n_fail + check('unpaired: complete separation', double(R.separated), 1, 0);
+R = pt_compare_two(randn(8, 1), randn(8, 1) + 20, false, 2000);
+n_fail = n_fail + check('unpaired: CI below 0 when B >> A', double(R.ci_hi < 0), 1, 0);
+z = randn(24, 1);
+R = pt_compare_two(z, z, true, 2000);
+n_fail = n_fail + check('paired: identical -> not separated', double(R.separated), 0, 0);
+R = pt_compare_two([1 2]', [3 4]', false, 200);
+n_fail = n_fail + check('n < 3 -> NaN CI, not separated', ...
+    double(isnan(R.ci_lo) && ~R.separated), 1, 0);
+
+% 6b. Coverage percentile ----------------------------------------------
+v = (1:30)';
+D = pt_describe(v, 2000);
+n_fail = n_fail + check('describe: p95 == pctl', D.cover, pctl(v, 95), 1e-12);
+n_fail = n_fail + check('describe: p95 CI brackets p95', ...
+    double(D.cover_ci_lo <= D.cover && D.cover <= D.cover_ci_hi), 1, 0);
 
 % 7. Unit scale detection ----------------------------------------------
 base_T = 1e-15 * (0.5 + rand(50, 3));            % ~1 fT/nAm expressed in T per nA*m
@@ -105,10 +117,24 @@ for k = 1:size(cases, 1)
     n_fail = n_fail + check(['unit scale: ' cases{k, 1}], log10(s), log10(cases{k, 4}), 1e-9);
 end
 
-% 8. FDR within groups -------------------------------------------------
-T = table({'a'; 'a'; 'b'; 'b'}, [0.01; 0.04; 0.01; 0.04], 'VariableNames', {'g', 'p'});
-T = pt_fdr_by_group(T, {'g'});
-n_fail = n_fail + check('FDR per group (not pooled)', T.p_fdr(3), 0.02, 1e-12);
+% 8. Lead fields written in msg_fwd's layout, and resumed --------------
+gd   = tempname; mkdir(gd);
+grad = struct('coilpos', [0 0 50; 10 0 50; 0 10 50], 'coilori', repmat([0 0 1], 3, 1), ...
+              'tra', eye(3), 'label', {{'c1'; 'c2'; 'c3'}}, 'unit', 'mm');
+g = struct('back_coils_3axis', grad, 'sources_cent', struct('pos', [0 0 0; 0 5 0]));
+save(fullfile(gd, 'geometries_k1.mat'), '-struct', 'g');
+Rl = pt_compute_leadfields('bslaw', gd, {'k1'}, fullfile(gd, 'bs'));
+f  = fullfile(gd, 'bs', 'leadfield_geometries_k1_bslaw_back.mat');
+n_fail = n_fail + check('BS file in msg_fwd layout', double(isfile(f) && Rl.written == 1), 1, 0);
+if isfile(f)
+    Lf = load(f, 'leadfield_bs');
+    Lr = bs_leadfield(grad, g.sources_cent.pos);
+    n_fail = n_fail + check('BS file == bs_leadfield', ...
+        max(abs(Lf.leadfield_bs.leadfield{2}(:) - Lr{2}(:))), 0, 1e-12);
+end
+Rl = pt_compute_leadfields('bslaw', gd, {'k1'}, fullfile(gd, 'bs'));
+n_fail = n_fail + check('existing file skipped on rerun', ...
+    double(Rl.written == 0 && Rl.skipped == 1), 1, 0);
 
 fprintf('\n%d failure(s)\n', n_fail);
 

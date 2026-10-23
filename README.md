@@ -21,8 +21,19 @@ This toolbox answers questions about MSG forward models:
 > *And once realistic sensor noise is added, how much of the field survives?*
 
 Starting from an original geometry file produced by `msg_coreg`, msg_pert
-generates three sets of perturbed configurations and provides the tools to
-analyse the resulting forward fields once they have been computed in `msg_fwd`.
+generates three sets of perturbed configurations, computes their forward
+fields with `msg_fwd`'s solvers, and analyses them.
+
+### Forward models
+
+| Model | Modalities | Role |
+|---|---|---|
+| **BEM** (MRI-derived) | MSG, ESG | the reference: every model comparison is measured against it |
+| **FEM** | MSG | the second volume-conductor model; DUNEuro as msg_fwd calls it is MEG only |
+| **Biot-Savart** | MSG | anatomy-free: the purely geometric sensitivity, and the upper bound through noise |
+
+Every perturbation is solved with every model that applies, so one shift can
+be read through all three.
 
 Two **modalities** are supported side by side: **MSG** (triaxial magnetometer
 array) and **ESG** (tangential/radial surface electrodes). Both are configured
@@ -35,7 +46,7 @@ edited between modalities. A final combined stage compares the two directly.
 |---|---|---|---|
 | **Source space** | Spinal cord mesh, bone mesh, source positions | Torso, heart, lungs | 24: 3 bundles × 8 random shifts |
 | **Sensor array** | Sensor coil / electrode positions | All anatomy meshes | 24: 3 bundles × 8 random shifts |
-| **Conductivity** (BEM only) | Tissue compartment conductivities | Geometry (original) | 24: 3 bundles × 8 random scalings |
+| **Conductivity** (BEM, FEM) | Tissue compartment conductivities | Geometry (original) | 24: 3 bundles × 8 random scalings |
 
 All three use the same bundle structure: three error bundles (small / medium /
 large) with 8 random realisations each.
@@ -48,36 +59,50 @@ cord–bone unit moves together. Bundles are ~2 mm (small), ~5 mm (medium),
 few mm off its true position. Same ~2/5/10 mm bundle scales. For ESG (surface
 electrodes) the shift is applied in X and Y only (Z held at 0).
 
-**Conductivity perturbations** scale each BEM tissue compartment's conductivity
-upward by a random factor (bundles: up to +5%, +10%, +50%). Because HBF bakes
-conductivity into the BEM transfer matrices, each perturbation rebuilds the head
-model (see `msg_fwd/run_conductivity_perturbation.m`).
+**Conductivity perturbations** scale each tissue compartment's conductivity
+upward by a random factor (bundles: up to +5%, +10%, +50%). BEM and FEM get the
+same draws, so the two solvers are compared on identical changes. Because HBF
+bakes conductivity into the BEM transfer matrices, each BEM draw rebuilds the
+head model; the FEM reuses its mesh and changes the labels' conductivities.
+
+**FEM re-meshing.** TetGen places its region seeds at random, so two FEM meshes
+of one geometry give slightly different lead fields. A sensor shift or
+conductivity draw reuses the unshifted mesh and contains no re-meshing; a
+source shift moves the cord and bone and needs a new mesh. The unshifted
+geometry is therefore also meshed with 8 other seeds, and that spread — the
+re-meshing floor — is reported beside every FEM source-shift result.
 
 ---
 
 ## Workflow
 
-```
-Phase 1 — perturbation generation (once per study)
+Two scripts run everything, with every folder set in `config_pert_paths.m`:
 
-  msg_coreg geometry file
+```
+Phase 1 — geometries and lead fields  (run_all_perturbations, once per study)
+
+  msg_coreg geometry file  (<data_root>/geometries/<base_geom_name>.mat)
          │
          ├─ pt_generate_source_shifts   →  24 source-shift geometries
          ├─ pt_generate_sensor_shifts   →  24 sensor-shift geometries
          ▼
-  msg_fwd: BEM (MSG + ESG), Biot-Savart (MSG), conductivity perturbation,
-           optional FEM — on every geometry, for the analysed array
+  pt_compute_leadfields, with msg_fwd's solvers:
+         BEM (MSG + ESG), FEM (MSG), Biot-Savart (MSG),
+         conductivity perturbation (BEM + FEM), FEM re-meshing control
+         — on every geometry, for the analysed array
          │
          ▼
-Phase 2 — staged analysis  (run_perturbation_analysis)
+Phase 2 — staged analysis  (run_all_pert_analysis)
 
   0  pt_load_leadfields, pt_compute_metrics   every metric, every perturbation
   1  pt_baseline            noise-free fields: topoplots, amplitude, model type
-  2  pt_within_modality     MSG: perturbation types and sizes, with statistics
+  2  pt_within_modality     MSG: perturbation types and sizes, with intervals
   3  pt_within_modality     ESG: the same
   4  pt_compare_modalities  MSG vs ESG under identical perturbations
-  5  pt_noise_simulate      stages 2–4 repeated through realistic sensor noise
-     pt_noise_analyse       (SQUID MSG, OP-MSG, ESG)
+  5  pt_noise_simulate      an N13-like evoked response at C7 through realistic
+     pt_noise_analyse       sensor noise (SQUID MSG, OP-MSG, ESG through BEM;
+                            the MSG systems also through FEM and through the
+                            Biot-Savart upper bound), stages 2–4 repeated
   6  pt_summary_table       every source of error on one scale
 ```
 
@@ -85,14 +110,16 @@ Phase 2 — staged analysis  (run_perturbation_analysis)
 
 | Stage | Question |
 |---|---|
-| 1 | What do Biot-Savart MSG, BEM MSG and BEM ESG predict before anything goes wrong, and how different are two reasonable model types? |
-| 2, 3 | Within one modality: how large is each perturbation, where along the cord, is it an amplitude or a topography change, does it scale with shift size, which type matters most, and does the forward model type change the sensitivity? |
+| 1 | What do Biot-Savart, BEM and FEM MSG and BEM ESG predict before anything goes wrong, and how different are the model types (MRI-derived BEM as the reference)? |
+| 2, 3 | Within one modality: how large is each perturbation, where along the cord, is it an amplitude or a topography change, does it scale with shift size, which type matters most, do BEM and FEM respond alike, how much of the sensitivity does the anatomy add over the anatomy-free Biot-Savart model, and is a FEM source-shift effect larger than re-meshing alone? |
 | 4 | Do MSG and ESG respond differently to the same perturbation, and do they rank the perturbation types differently? |
-| 5 | Once realistic sensor noise is added, which perturbations are still visible, at what noise level do they disappear, and do the stage-4 differences survive? |
-| 6 | Of model type, geometry, conductivity and noise, which dominates? |
+| 5 | For an N13-like evoked response at C7: how well is it recovered through each system's noise with perfect coregistration, and once the geometry is wrong, which perturbations are still visible, at what noise level do they disappear, do the stage-4 differences survive, and how far below the Biot-Savart upper bound does each MSG system sit? |
+| 6 | Of model type, geometry, conductivity and noise, which dominates — over the cord and at C7? |
 
 Every stage reports the same four metrics (RE, r², RDM and gain from lnMAG)
-and uses the same statistics, so numbers can be compared across stages.
+and the same kind of summary — medians with bootstrap intervals, as msg_fwd
+and msg_models do — so numbers can be compared across stages and across the
+toolboxes.
 **[RUN_ORDER.md](RUN_ORDER.md)** says what to run and what it costs;
 **[INTERPRETATION.md](INTERPRETATION.md)** says how to read every output.
 
@@ -105,10 +132,32 @@ This toolbox is part of the MSG toolbox family and depends on:
 **msg_coreg** — MSG Coregistration Toolbox (produces the input geometry files)  
 https://github.com/maikeschmidt/msg_coreg
 
-**msg_fwd** — MSG Forward Modelling Toolbox (runs BEM/FEM/Biot-Savart/sphere on shifted geometries)  
+**msg_fwd** — MSG Forward Modelling Toolbox (runs BEM/FEM/Biot-Savart/sphere
+on shifted geometries, and defines the metrics, percentiles and intervals
+every msg toolbox reports)  
 https://github.com/maikeschmidt/msg_fwd
 
-Both must be cloned as sibling directories to `msg_pert`.
+Both must be cloned as sibling directories to `msg_pert`. `pt_add_functions`
+warns if msg_fwd lacks a function msg_pert calls.
+
+Related, not required:
+
+**msg_analysis** — the real-data counterpart: concurrent spinal cord and
+brain OPM recordings after median nerve stimulation, with source analysis on
+msg_fwd forward models. The factors
+msg_pert ranks in simulation (forward model, source and sensor error,
+conductivity, sensor noise) are the ones to test there on measured N13
+responses.  
+https://github.com/maikeschmidt/msg_analysis
+
+**msg_models** — numerical and mesh factors (convergence, bone conductivity
+sweep, mesh repeatability). Its numbers use the same metrics and intervals,
+so its mesh and bone-conductivity results can be read on the same scale as
+the perturbations here. Its FEM seed-pair study measures the same re-meshing
+effect as msg_pert's re-meshing floor, across mesh resolutions. Its bone-conductivity sweep varies one compartment
+over a wide range; the conductivity perturbations here scale every
+compartment by a few percent to 50% at once.  
+https://github.com/maikeschmidt/msg_models
 
 ---
 
@@ -116,13 +165,17 @@ Both must be cloned as sibling directories to `msg_pert`.
 
 ```
 msg_pert/
-├── config_pert.m                  — every path and setting
-├── run_perturbation_analysis.m    — PHASE 2 master: runs stages 0–6
+├── config_pert_paths.m            — every folder (set data_root here)
+├── config_pert.m                  — every other setting
+├── run_all_perturbations.m        — PHASE 1 master: geometries + lead fields
+├── run_all_pert_analysis.m        — PHASE 2 master: runs stages 0–6
 ├── RUN_ORDER.md                   — what to run, in what order, at what cost
 ├── INTERPRETATION.md              — how to read every output
 │
 ├── pt_generate_source_shifts.m    — PHASE 1: 24 source-shift geometries
 ├── pt_generate_sensor_shifts.m    — PHASE 1: 24 sensor-shift geometries
+│   (functions/pt_compute_leadfields.m — PHASE 1: BEM, Biot-Savart and
+│    conductivity lead fields with msg_fwd's solvers)
 │
 ├── pt_load_leadfields.m           — stage 0: load one array, scale each file, check
 ├── pt_compute_metrics.m           — stage 0: RE, r², RDM, lnMAG for every perturbation
@@ -130,7 +183,7 @@ msg_pert/
 ├── pt_within_modality.m           — stages 2/3: within MSG / within ESG
 ├── pt_compare_modalities.m        — stage 4: MSG vs ESG
 ├── pt_noise_simulate.m            — stage 5a: perturbation + sensor noise
-├── pt_noise_analyse.m             — stage 5b: figures, tables, statistics
+├── pt_noise_analyse.m             — stage 5b: figures, tables, intervals
 ├── pt_summary_table.m             — stage 6: every factor on one scale
 │
 ├── pt_modality.m                  — holds the active modality between scripts
@@ -147,10 +200,11 @@ msg_pert/
 │   ├── pt_metrics_block.m         — vectorised lf_metrics (identical numbers)
 │   ├── pt_lf_matrix.m             — comparison vectors per orientation / axis set
 │   ├── pt_unit_scale.m            — per-file unit detection
-│   ├── pt_compare_two.m           — paired / unpaired test + effect size
-│   ├── pt_stats_within.m, pt_stats_between.m, pt_fdr_by_group.m
-│   ├── pt_perm_test2.m, pt_cliffs_delta.m, pt_spearman_perm.m
-│   ├── pt_describe.m, pt_quantile.m, pt_shift_summary.m, pt_metric_info.m
+│   ├── pt_compare_two.m           — paired / unpaired difference + bootstrap interval
+│   ├── pt_stats_within.m, pt_stats_between.m, pt_compare_row.m
+│   ├── pt_rank_corr.m             — Spearman rho + bootstrap interval
+│   ├── pt_describe.m              — median, IQR, 95th percentile, intervals
+│   ├── pt_quantile.m, pt_shift_summary.m, pt_metric_info.m, pt_sep_label.m
 │   └── pt_write_table.m, pt_long_row.m, pt_plot_band.m, pt_save_figure.m, ...
 │
 ├── tests/
@@ -191,73 +245,74 @@ msg_pert/
 pt_add_functions;   % adds msg_pert to path; checks msg_coreg, msg_fwd, HBF
 ```
 
-### Step 2: Configure
+### Step 2: Set the paths
 
-Everything is set in `config_pert.m`. Paths, sensor description and method
-availability are declared **per modality**, in one block each:
+Every folder is in `config_pert_paths.m`. Usually only the first line
+changes:
 
 ```matlab
-base_geom_name = 'original';   % short stem in file names, WITHOUT the
-                               % leading 'geometries_' prefix
+data_root    = 'D:\Simulations\Pertubations';   % SET THIS
+results_root = fullfile(data_root, 'results');
+```
 
-mods_cfg.msg.geoms_path           = '';   % original geometry .mat
-mods_cfg.msg.perturbed_geoms_path = '';   % output for shifted geometry files
-mods_cfg.msg.forward_fields_base  = '';   % msg_fwd leadfield output
-mods_cfg.msg.save_base_dir        = '';   % figures and tables
-mods_cfg.msg.sensor_n_axes        = 3;    % 3 = triaxial MSG
-mods_cfg.msg.sensor_is_meg        = true;
-mods_cfg.msg.have_bem             = true; % which forward models you computed
-% ... and the same block again for mods_cfg.esg (sensor_n_axes = 2)
+Put the original geometry from msg_coreg at
+`<data_root>/geometries/<base_geom_name>.mat` (MSG) and
+`<data_root>/geoms_elec/<base_geom_name>.mat` (ESG). Everything else is
+created by the two run scripts. The file is not called `config_paths`
+because msg_fwd's file of that name is on the path too.
 
-combined_results_dir = '';                % MSG-vs-ESG comparison output
-pert_modalities      = {'msg', 'esg'};    % e.g. {'msg'} to run MSG only
+### Step 3: Configure
+
+Everything else is in `config_pert.m`. Sensor description and method
+availability are declared **per modality**:
+
+```matlab
+base_geom_name = 'original';   % stem of the msg_coreg geometry file
+
+mods_cfg.msg.sensor_n_axes = 3;    % 3 = triaxial MSG
+mods_cfg.msg.sensor_is_meg = true;
+mods_cfg.msg.have_bem      = true; % which forward models to compute and analyse
+% ... and the same block for mods_cfg.esg (sensor_n_axes = 2)
+
+pert_modalities = {'msg', 'esg'};  % e.g. {'msg'} to run MSG only
+analysis_array  = 'back';          % the array computed and analysed
+evoked_src_mm   = 60;              % C7, distance along the source space (mm)
 ```
 
 `sensor_n_axes` and `sensor_is_meg` are **declared, not inferred**: an ESG
 electrode count can also be divisible by 3, so guessing would mis-split the
 leadfield.
 
-### Step 3: Generate source-shift geometries (Phase 1a)
+### Step 4: Geometries and lead fields (Phase 1)
 
 ```matlab
-pt_generate_source_shifts;
+run_all_perturbations;
 ```
 
-This produces 24 shifted geometry files (3 bundles × 8 random shifts) in
-`perturbed_geoms_path` and prints the shift vectors to paste into `config_pert.m`
-plus a filename list for `msg_fwd`.
+For each modality this generates the 24 source-shift and 24 sensor-shift
+geometries (3 bundles × 8 random shifts, plus the unshifted references),
+saves the shift vectors next to them (`config_pert` reads them, so nothing
+is pasted by hand), and computes with msg_fwd's solvers, in msg_fwd's file
+layout:
 
-### Step 4: Generate sensor-shift geometries (Phase 1b)
+- BEM on every geometry, and on 24 conductivity draws
+- Biot-Savart on every geometry (MSG)
+- FEM on every geometry, on the same 24 conductivity draws, and on 8
+  re-meshes of the unshifted geometry (MSG; Windows with DUNEuro, as for
+  msg_fwd's `run_fem_leadfields`; `duneuro_binpath` in `config_pert_paths`)
 
-```matlab
-pt_generate_sensor_shifts;
-```
+Existing files are skipped, so an interrupted run resumes. This is the slow
+part: hours for the BEM, days for the FEM. Set `do_fem = false` at the top
+to get the BEM and Biot-Savart results first.
 
-This produces 24 shifted geometry files and prints:
-1. The shift vectors — paste into `config_pert.m` under `sensor_shift_vectors`
-2. A filename list for `msg_fwd`
+Sphere lead fields are not part of Phase 1. To add them, run msg_fwd's
+runner on the printed geometry list, write them to `msg_sphere_dir` and set
+`have_sphere`.
 
-### Step 5: Run forward models in msg_fwd
-
-Copy the printed filename lists into `msg_fwd` and run the forward models you need
-for both front and back arrays:
-
-- `run_bem_leadfields.m` — BEM (required)
-- `run_fem_leadfields.m`, Biot-Savart, single sphere — optional extra methods
-- `run_conductivity_perturbation.m` — BEM conductivity leadfields (for the
-  conductivity mode)
-
-The per-geometry leadfield `.mat` files are the input to Phase 2. (msg_pert
-organises them itself via `pt_load_leadfields` in the next step — you do **not**
-run msg_fwd's own `load_and_organise_leadfields` here.)
-
-### Step 6: Run the analysis (Phase 2)
-
-Set the `have_<method>` flags per modality in `config_pert.m` to match the
-forward models you computed, set `stage_results_dir`, then:
+### Step 5: Run the analysis (Phase 2)
 
 ```matlab
-run_perturbation_analysis;
+run_all_pert_analysis;
 ```
 
 Flags at the top of that script run a subset of stages. Any stage can be
@@ -267,10 +322,10 @@ Outputs go to numbered folders under `stage_results_dir`:
 | Folder | Contents |
 |---|---|
 | `1_baseline` | topoplots, amplitude and focality along the cord, model-type decomposition |
-| `2_within_msg`, `3_within_esg` | decomposition per bundle, dose response, types and methods compared, statistics tables |
-| `4_msg_vs_esg` | headline comparison, effect-size maps, interaction, slopes, along-cord tests |
-| `5_noise` | noise alone, perturbation + noise, detectability, critical noise levels, error budget, systems compared per level |
-| `6_summary` | one ranking of every source of error per modality |
+| `2_within_msg`, `3_within_esg` | decomposition per bundle, dose response, types and methods compared, anatomy contribution and FEM re-meshing floor (MSG), comparison tables |
+| `4_msg_vs_esg` | headline comparison, difference maps, interaction, slopes, along-cord differences |
+| `5_noise/c7`, `5_noise/cord` | noise alone, perturbation + noise, detectability, critical noise levels, error budget, systems compared per level — at the C7 source and over the cord |
+| `6_summary` | one ranking of every source of error per modality, over the cord and at C7 |
 
 Every table is written as `.csv` (every orientation and axis set), `.txt`
 (readable) and `.tex` (booktabs; headline orientation, whole array).
@@ -281,17 +336,19 @@ Every table is written as `.csv` (every orientation and axis set), `.txt`
 
 | Script | Stage | Description |
 |---|---|---|
-| `pt_generate_source_shifts` | Phase 1 | 24 geometries: 3 bundles × 8 random source-space shifts |
-| `pt_generate_sensor_shifts` | Phase 1 | 24 geometries: 3 bundles × 8 random sensor-array shifts |
-| `run_perturbation_analysis` | all | Master script: stages 0–6, both modalities |
+| `run_all_perturbations` | Phase 1 | Master script: geometries and lead fields, both modalities |
+| `pt_generate_source_shifts` | Phase 1 | 24 geometries: 3 bundles × 8 random source-space shifts; saves the shift vectors |
+| `pt_generate_sensor_shifts` | Phase 1 | 24 geometries: 3 bundles × 8 random sensor-array shifts; saves the shift vectors |
+| `pt_compute_leadfields` | Phase 1 | BEM, FEM, Biot-Savart, conductivity-perturbed BEM/FEM and FEM re-meshing lead fields with msg_fwd's solvers, in msg_fwd's file layout |
+| `run_all_pert_analysis` | Phase 2 | Master script: stages 0–6, both modalities |
 | `pt_load_leadfields` | 0 | Load the analysed array for every method and perturbation; per-file unit scaling; magnitude check against each reference |
 | `pt_compute_metrics` | 0 | RE, r², RDM and lnMAG per source, method, orientation and axis set → `pert_metrics.mat` |
 | `pt_baseline` | 1 | Unperturbed topoplots, amplitude and focality along the cord, forward-model-type decomposition |
-| `pt_within_modality` | 2, 3 | Within one modality: descriptive table, decomposition per bundle, dose response, type and method comparisons, along-cord source-vs-sensor test |
-| `pt_compare_modalities` | 4 | MSG vs ESG: descriptive, tests, interaction, dose-response slopes, along-cord tests, effect-size maps |
-| `pt_noise_simulate` | 5 | Every perturbed field measured through trial-averaged sensor noise, scored against the true field |
-| `pt_noise_analyse` | 5 | Noise alone, perturbation + noise, detectability, critical noise level, error budget, system comparisons per level, within-modality tests under noise |
-| `pt_summary_table` | 6 | Every source of error ranked on one scale |
+| `pt_within_modality` | 2, 3 | Within one modality: descriptive table, decomposition per bundle, dose response, type and method comparisons, along-cord source-vs-sensor differences, anatomy contribution (BEM and FEM), FEM re-meshing floor |
+| `pt_compare_modalities` | 4 | MSG vs ESG: descriptive, differences with intervals, interaction, dose-response slopes, along-cord differences, difference maps |
+| `pt_noise_simulate` | 5 | An N13-like evoked response at C7 (and at every cord position) through every perturbed field and trial-averaged sensor noise, scored against the true field |
+| `pt_noise_analyse` | 5 | Noise alone, perturbation + noise, detectability, critical noise level, error budget, system comparisons per level (including the Biot-Savart bound), within-modality comparisons under noise — once at C7, once over the cord |
+| `pt_summary_table` | 6 | Every source of error ranked on one scale, over the cord and at C7 |
 | `pt_modality` | — | Get/set the active modality; survives each script's `clearvars` |
 | `pt_run_step` | — | Run one script in an isolated workspace |
 | `pt_diagnose_leadfields` | — | Inspect a loaded lead-field set |
@@ -303,10 +360,12 @@ Every table is written as `.csv` (every orientation and axis set), `.txt`
 The `simulations/` package predates stage 5 and remains usable on its own. It
 scores the noisy sensor-by-time data matrix with r², for a single
 representative shift per bundle. Stage 5 of the main pipeline asks the same
-question for every realisation with all four metrics and statistics, so
-use stage 5 for results that sit alongside stages 1–4. The noise floors and
-source waveform in `config_pert.m` are copied from `simulations/config_sim.m`;
-keep the two in step if you change either. See `simulations/README.md`.
+question for every realisation with all four metrics and intervals, so
+use stage 5 for results that sit alongside stages 1–4. The noise floors in
+`config_pert.m` are copied from `simulations/config_sim.m`; keep the two in
+step if you change either. The source waveform differs on purpose: stage 5
+uses an N13-like response at 13 ms, the package its own 70 Hz burst. See
+`simulations/README.md`.
 
 ---
 
@@ -324,10 +383,20 @@ unperturbed geometry is always the reference.
 | gain (%) | `(exp(lnMAG) − 1) × 100`, magnitude only |
 
 `RE ≈ √(gain² + (RDM×100)²)`, so every result can be split into an
-amplitude part and a topography part. Statistics treat one perturbation
-realisation as one observation (its median over the cord), use permutation
-tests with rank-biserial or Cliff's δ effect sizes, and are FDR-corrected
-within each family and metric. See [INTERPRETATION.md](INTERPRETATION.md).
+amplitude part and a topography part. One perturbation realisation is one
+observation (its median over the cord, or its value at C7 in stage 5).
+Because every value is computed exactly from a simulated geometry, results
+are reported as msg_fwd reports its replicate geometries: medians and
+differences with percentile bootstrap intervals, the IQR, and the 95th
+percentile with its interval — not significance tests. Percentiles and
+intervals come from msg_fwd's `pctl` and `st_boot_ci_median`. See
+[INTERPRETATION.md](INTERPRETATION.md).
+
+**Reference field.** Forward models (Biot-Savart, FEM) are compared against
+the unperturbed MRI-derived BEM, as in msg_fwd and msg_models. Perturbations are measured
+against each model's own unperturbed field. Biot-Savart, which has no
+anatomy, is the anatomy-independent comparison: the geometric part of the
+sensitivity, and the upper bound on recoverability through noise.
 
 ---
 

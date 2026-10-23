@@ -16,12 +16,14 @@
 % variability in the anatomical location of the cord/bone relative to the
 % fixed outer body surface and sensor array.
 %
-% Shift vectors are randomly generated and printed so they can be pasted
-% back into config_pert.m as source_shift_vectors.
+% Shift vectors are randomly generated (seeded), saved next to the
+% geometries as pert_source_shift_vectors.mat, where config_pert reads them,
+% and printed for the record.
 %
 % USAGE:
 %   pt_generate_source_shifts
 %   pt_generate_source_shifts(S)
+%   names = pt_generate_source_shifts(...)   % geometry keys written
 %
 % INPUT (set in script or pass via S):
 %   S.geoms_path           - Path to original geometry .mat file
@@ -30,13 +32,15 @@
 %   S.seed                 - Random seed for reproducible shifts (default: 42)
 %
 % OUTPUTS (saved to S.perturbed_geoms_path):
+%   pert_source_shift_vectors.mat                   — the shift vectors applied,
+%                                                     read by config_pert
 %   geometries_<base>_source_original.mat           — unshifted reference copy
 %   geometries_<base>_source_bundle1_shift1.mat     — Bundle 1, shift 1
 %   ...
 %   geometries_<base>_source_bundle3_shift8.mat     — Bundle 3, shift 8
 %
 % ALSO PRINTS:
-%   Generated shift vectors (for pasting into config_pert.m)
+%   Generated shift vectors (for the record; config_pert reads the saved file)
 %   List of all geometry file stems for pasting into msg_fwd
 %
 % DEPENDENCIES:
@@ -53,7 +57,7 @@
 % Email:  maike.schmidt.23@ucl.ac.uk
 % Date:   June 2026
 
-function pt_generate_source_shifts(S)
+function saved_names = pt_generate_source_shifts(S)
 
 if nargin < 1, S = struct(); end
 
@@ -111,12 +115,19 @@ for b = 1:n_bundles
     shift_vectors{b} = vecs;
 end
 
-% Print shift vectors for pasting into config_pert
+% Save the vectors next to the geometries. config_pert reads this file, so
+% the sizes used in the analysis are always the shifts actually applied.
+sv_out = fullfile(S.perturbed_geoms_path, 'pert_source_shift_vectors.mat');
+seed   = S.seed; %#ok<NASGU>
+save(sv_out, 'shift_vectors', 'bundle_ranges', 'seed');
+fprintf('Shift vectors saved: %s\n', sv_out);
+
+% Print shift vectors (for the record; config_pert reads the saved file)
 bundle_names = {'Bundle 1 — small  (~2mm)', ...
                 'Bundle 2 — medium (~5mm)', ...
                 'Bundle 3 — large  (~10mm)'};
 fprintf('=================================================================\n');
-fprintf('  PASTE THIS INTO config_pert.m  →  source_shift_vectors\n');
+fprintf('  source_shift_vectors (saved to pert_source_shift_vectors.mat; config_pert reads it)\n');
 fprintf('=================================================================\n');
 fprintf('source_shift_vectors = {\n');
 for b = 1:n_bundles
@@ -169,8 +180,8 @@ end
 % Print filename list for msg_fwd
 fprintf('\n');
 fprintf('=================================================================\n');
-fprintf('  PASTE THESE FILENAMES INTO msg_fwd config_models.m\n');
-fprintf('  (or into the filenames cell in run_bem_leadfields.m)\n');
+fprintf('  GEOMETRIES WRITTEN (run_all_perturbations computes their lead fields;\n');
+fprintf('  for msg_fwd''s own runners, paste into their filenames cell)\n');
 fprintf('=================================================================\n');
 fprintf('\nfilenames = {\n');
 for k = 1:numel(saved_names)

@@ -9,7 +9,8 @@
 %
 % DEPENDENCIES CHECKED:
 %   msg_coreg    — sibling directory; provides cr_add_functions and HBF
-%   msg_fwd      — sibling directory; provides BEM/FEM pipeline and functions/
+%   msg_fwd      — sibling directory; provides BEM/FEM pipeline and functions/,
+%                  including the shared metric and interval definitions
 %   SPM          — must be on path (provides FieldTrip wrappers)
 %   HBF          — Helsinki BEM Framework (via msg_coreg/hbf_lc_p)
 %
@@ -83,6 +84,22 @@ if isfolder(fwd_path)
         addpath(fwd_fns);
     end
     fprintf('msg_fwd added to path: %s\n', fwd_path);
+
+    % The msg_fwd functions msg_pert calls. The first five define every
+    % metric, percentile and interval, so msg_pert numbers are computed
+    % exactly as msg_fwd's and msg_models' are; the rest compute the lead
+    % fields (run_all_perturbations). A missing one means msg_fwd is
+    % older than this copy of msg_pert.
+    need = {'lf_metrics', 'lf_metrics_series', 'metric_defaults', 'pctl', ...
+            'st_boot_ci_median', 'plot_topoplot_publication', ...
+            'plot_metric_decomposition', 'organise_leadfield', ...
+            'bem_build_boundaries', 'bs_leadfield', 'log_compute_time', ...
+            'fem_build_volume_mesh', 'convert_duneuro_to_fieldtrip'};
+    missing = need(cellfun(@(f) isempty(which(f)), need));
+    if ~isempty(missing)
+        warning('pt_add_functions: msg_fwd at %s lacks %s. Update msg_fwd.', ...
+            fwd_path, strjoin(missing, ', '));
+    end
 else
     warning('pt_add_functions: msg_fwd not found at %s\nClone from https://github.com/maikeschmidt/msg_fwd', fwd_path);
 end

@@ -6,16 +6,21 @@
 % modality_compare_method). Five analyses:
 %
 %   A. Side-by-side description     every metric, type, bundle, axis set
-%   B. MSG vs ESG tests             per type x bundle (and pooled), paired by
+%   B. MSG vs ESG differences       per type x bundle (and pooled), paired by
 %                                   realisation where the two modalities share
-%                                   the same geometric change (msg_esg_paired)
+%                                   the same geometric change (msg_esg_paired),
+%                                   median difference with bootstrap interval
 %   C. Interaction                  is the source-vs-sensor difference itself
 %                                   different between MSG and ESG?
 %   D. Dose-response slopes         metric change per mm (or per %) in each
 %                                   modality, with a bootstrap CI of the
 %                                   difference
 %   E. Along the cord               where MSG and ESG differ, per-position
-%                                   tests FDR-corrected across positions
+%                                   bootstrap interval of the difference
+%
+% As in msg_fwd, every comparison is an interval, not a test: the values are
+% computed exactly, so there is no null hypothesis; what is uncertain is how
+% representative the random perturbations are (see pt_compare_two).
 %
 % AXIS MATCHING
 %   MSG is triaxial, ESG has tangential and radial electrodes. Comparisons
@@ -35,9 +40,9 @@
 %
 % OUTPUT (to <stage_results_dir>/4_msg_vs_esg/):
 %   headline_<axes>.png                   metrics x types, MSG vs ESG per bundle
-%   along_cord_<type>.png                 cord profiles with significant positions
-%   effect_size_map.png                   effect sizes, all types/bundles/axes
-%   effect_size_map_orientations.png      the same across dipole orientations
+%   along_cord_<type>.png                 cord profiles; marked where the interval excludes 0
+%   difference_map.png                    relative MSG-ESG difference, all types/bundles/axes
+%   difference_map_orientations.png       the same across dipole orientations
 %   gain_vs_rdm.png                       amplitude vs topography, both modalities
 %   dose_response.png                     metric vs perturbation size, both
 %   modality_descriptive.csv/.txt/.tex    section A
@@ -95,16 +100,16 @@ for k = 1:numel(B.axcfg_slot)
 end
 fprintf('  Axis sets compared: %s\n\n', strjoin(amatch(:, 1)', ', '));
 
-sopts = struct('bundle_names', {bundle_names}, 'n_perm', stats_n_perm);
+sopts = struct('bundle_names', {bundle_names}, 'n_boot', stats_n_boot, 'level', stats_ci_level);
 colA = modality_colors.msg; colB = modality_colors.esg;
 vals = @(PM, ty, metric, c, o) pt_shift_summary(PM.pert.(ty).M.(meth), metric, c, o);
 
 
 % =========================================================================
-% A + B. DESCRIPTION AND TESTS
+% A + B. DESCRIPTION AND DIFFERENCES
 % =========================================================================
 
-fprintf('[A/B] Description and MSG vs ESG tests\n');
+fprintf('[A/B] Description and MSG vs ESG differences\n');
 desc_rows = {};    % long: one row per metric
 wide_rows = {};    % wide: one row per type x bundle x ori x axes
 tabs = {};
@@ -174,29 +179,28 @@ pt_write_table(Tdw, fullfile(out_dir, 'modality_descriptive'), struct( ...
                 strcmp(Tdw.axis_set, 'Array')));
 
 Ts = vertcat(tabs{:});
-Ts = pt_fdr_by_group(Ts, {'metric'}, stats_alpha);
 Ts = movevars(Ts, {'perturbation', 'metric', 'orientation', 'axis_set'}, 'Before', 1);
 Ts.group = strcat(Ts.metric, {' — '}, Ts.axis_set);
 Ts = sortrows(Ts, {'metric', 'axis_set'});
 pt_write_table(Ts, fullfile(out_dir, 'modality_stats'), struct( ...
     'cols', {{ 'perturbation', 'Perturbation', 'Perturbation', '%s'; ...
                'subset', 'Bundle', 'Bundle', '%s'; ...
-               'test', 'Test', 'Test', '%s'; ...
+               'design', 'Design', 'Design', '%s'; ...
                'n_a', 'n', '$n$', '%d'; ...
                'median_a', 'MSG', 'MSG', '%.3g'; ...
                'median_b', 'ESG', 'ESG', '%.3g'; ...
-               'median_diff', 'MSG-ESG', 'MSG$-$ESG', '%+.3g'; ...
-               'effect', 'effect', 'Effect', '%+.2f'; ...
-               'p_fdr', 'p (FDR)', '$p_\mathrm{FDR}$', 'p' }}, ...
-    'title', 'STAGE 4 — MSG VS ESG TESTS (noise-free)', ...
-    'notes', {{'Positive effect = MSG shows the larger value of the metric.', ...
-               'Effect: rank-biserial when paired, Cliff delta when unpaired.', ...
-               'p_fdr: Benjamini-Hochberg within each metric across types, bundles, orientations and axis sets.'}}, ...
+               'estimate', 'MSG-ESG [95% CI]', 'MSG$-$ESG [95\% CI]', 'eci'; ...
+               'separated', 'CI excl. 0', 'CI excl.\ 0', 'yn' }}, ...
+    'title', 'STAGE 4 — MSG VS ESG DIFFERENCES (noise-free)', ...
+    'notes', {{'MSG-ESG: positive = MSG shows the larger value of the metric.', ...
+               'Paired: median of the per-realisation difference; unpaired: difference of medians.', ...
+               'CI: 95% percentile bootstrap over realisations. No significance tests: every value is computed exactly.'}}, ...
     'caption', ['MSG versus ESG under identical perturbations (noise-free). ' ...
                'Each observation is one perturbation realisation summarised over ' ...
-               'the cord; tests are paired where the two modalities share the ' ...
-               'same geometric change. Positive effect sizes mean MSG shows the ' ...
-               'larger value. $p_\mathrm{FDR}$ is adjusted within each metric.'], ...
+               'the cord; differences are paired where the two modalities share ' ...
+               'the same geometric change. Positive values mean MSG shows the ' ...
+               'larger value. Intervals are 95\% percentile bootstrap intervals ' ...
+               'over realisations.'], ...
     'label', 'tab:msg-esg-stats', 'group_by', 'group', ...
     'tex_rows', strcmp(Ts.orientation, headline_orientation)));
 
@@ -228,7 +232,6 @@ if all(ismember({'source', 'sensor'}, types)) && source_sensor_paired
         end
     end
     Tint = vertcat(tabs{:});
-    Tint = pt_fdr_by_group(Tint, {'metric'}, stats_alpha);
     Tint = movevars(Tint, {'metric', 'orientation', 'axis_set'}, 'Before', 1);
     Tint.group = strcat(Tint.metric, {' — '}, Tint.axis_set);
     pt_write_table(Tint, fullfile(out_dir, 'modality_interaction'), struct( ...
@@ -236,11 +239,11 @@ if all(ismember({'source', 'sensor'}, types)) && source_sensor_paired
                    'orientation', 'Ori', 'Ori.', '%s'; ...
                    'median_a', 'MSG src-sen', 'MSG (src$-$sen)', '%+.3g'; ...
                    'median_b', 'ESG src-sen', 'ESG (src$-$sen)', '%+.3g'; ...
-                   'effect', 'effect', 'Effect', '%+.2f'; ...
-                   'p_fdr', 'p (FDR)', '$p_\mathrm{FDR}$', 'p' }}, ...
+                   'estimate', 'MSG-ESG [95% CI]', 'MSG$-$ESG [95\% CI]', 'eci'; ...
+                   'separated', 'CI excl. 0', 'CI excl.\ 0', 'yn' }}, ...
         'title', 'STAGE 4 — INTERACTION: SOURCE-MINUS-SENSOR DIFFERENCE, MSG VS ESG', ...
         'notes', {{'Within each modality, source and sensor shift k share a shift vector, so (source - sensor) is a paired difference.', ...
-                   'A significant row means the two perturbation types rank differently in the two modalities.'}}, ...
+                   'A row whose interval excludes 0 means the two perturbation types rank differently in the two modalities.'}}, ...
         'caption', ['Interaction between modality and perturbation type: the ' ...
                    'paired source-minus-sensor difference in each modality, ' ...
                    'compared between MSG and ESG.'], ...
@@ -290,7 +293,7 @@ pt_write_table(Tsl, fullfile(out_dir, 'modality_slopes'), struct( ...
 
 
 % =========================================================================
-% E. ALONG THE CORD (per position, FDR across positions)
+% E. ALONG THE CORD (per-position interval of the difference)
 % =========================================================================
 
 fprintf('[E] Along the cord\n');
@@ -308,16 +311,14 @@ for t = 1:numel(types)
         for b = [1:nb, 0]
             if b == 0, sa = true(size(ba)); sb = true(size(bb)); sub = 'pooled';
             else, sa = ba == b; sb = bb == b; sub = bundle_names{b}; end
-            p = nan(1, numel(dist));
+            sig = false(1, numel(dist));
             for s = 1:numel(dist)
-                R = pt_compare_two(Xa(sa, s), Xb(sb, s), paired && isequal(sa, sb), stats_n_perm);
-                p(s) = R.p;
-            end
-            [padj, sig] = st_bh_fdr(p, stats_alpha);
-            for s = 1:numel(dist)
+                R = pt_compare_two(Xa(sa, s), Xb(sb, s), paired && isequal(sa, sb), ...
+                    stats_n_boot, stats_ci_level);
+                sig(s) = R.separated;
                 ps_rows(end+1, :) = {pert_type_display.(ty), plot_metrics{r}, sub, ...
-                    dist(s), median(Xa(sa, s), 'omitnan'), median(Xb(sb, s), 'omitnan'), ...
-                    p(s), padj(s), sig(s)}; %#ok<SAGROW>
+                    dist(s), R.median_a, R.median_b, R.median_diff, R.ci_lo, R.ci_hi, ...
+                    R.separated}; %#ok<SAGROW>
             end
             ax = nexttile(tl); hold(ax, 'on');
             h1 = pt_plot_band(ax, dist, Xa(sa, :), colA, '-', 'MSG');
@@ -334,18 +335,19 @@ for t = 1:numel(types)
         end
     end
     title(tl, sprintf(['MSG vs ESG — %s perturbation along the cord (%s, %s, whole array)\n' ...
-        'median and IQR over realisations; squares = FDR-significant positions'], ...
+        'median and IQR over realisations; squares = 95%% interval of MSG-ESG excludes 0'], ...
         lower(pert_type_display.(ty)), pt_method_label(meth), ...
         ori_titles.(headline_orientation)), 'FontWeight', 'bold');
     pt_save_figure(fig, out_dir, ['along_cord_' ty], fig_resolution);
 end
 writetable(cell2table(ps_rows, 'VariableNames', {'perturbation', 'metric', 'bundle', ...
-    'distance_mm', 'msg_median', 'esg_median', 'p', 'p_fdr', 'sig'}), ...
+    'distance_mm', 'msg_median', 'esg_median', 'msg_minus_esg', 'ci_lo', 'ci_hi', ...
+    'separated'}), ...
     fullfile(out_dir, 'modality_per_source.csv'));
 
 
 % =========================================================================
-% FIGURES: headline, effect-size maps, gain vs RDM, dose response
+% FIGURES: headline, difference maps, gain vs RDM, dose response
 % =========================================================================
 
 fprintf('[F] Summary figures\n');
@@ -376,9 +378,9 @@ for a = 1:size(amatch, 1)
                     strcmp(Ts.subset, bundle_names{b}) & strcmp(Ts.metric, tested(k).txt) & ...
                     strcmp(Ts.orientation, headline_orientation) & ...
                     strcmp(Ts.axis_set, amatch{a, 1}), :);
-                if ~isempty(row), stars{b} = pt_sig_label(row.p_fdr(1)); end
+                if ~isempty(row), stars{b} = pt_sep_label(row.separated(1)); end
             end
-            % Stars last, once every box is drawn and the y-limits are final
+            % Marks last, once every box is drawn and the y-limits are final
             yl = ylim(ax);
             ylim(ax, [yl(1), yl(2) + 0.08*diff(yl)]);
             for b = 1:nb
@@ -398,18 +400,18 @@ for a = 1:size(amatch, 1)
         end
     end
     title(tl, sprintf(['MSG vs ESG under identical perturbations — %s axes (%s, %s)\n' ...
-        'one value per realisation; stars = FDR-adjusted MSG vs ESG test per bundle'], ...
+        'one value per realisation; \\diamond = 95%% interval of MSG-ESG excludes 0'], ...
         amatch{a, 1}, pt_method_label(meth), ori_titles.(headline_orientation)), ...
         'FontWeight', 'bold');
     pt_save_figure(fig, out_dir, ['headline_' matlab.lang.makeValidName(amatch{a, 1})], ...
         fig_resolution);
 end
 
-% Effect-size maps
-effect_map(Ts, types, pert_type_display, bundle_names, tested, amatch(:, 1)', ...
-    {headline_orientation}, out_dir, 'effect_size_map', fig_resolution);
-effect_map(Ts, types, pert_type_display, bundle_names, tested, {'Array'}, ...
-    oris, out_dir, 'effect_size_map_orientations', fig_resolution);
+% Relative-difference maps
+diff_map(Ts, types, pert_type_display, bundle_names, tested, amatch(:, 1)', ...
+    {headline_orientation}, out_dir, 'difference_map', fig_resolution);
+diff_map(Ts, types, pert_type_display, bundle_names, tested, {'Array'}, ...
+    oris, out_dir, 'difference_map_orientations', fig_resolution);
 
 % Gain vs RDM, both modalities
 mk = {'o', 's', '^'};
@@ -507,9 +509,12 @@ function s = ls_slope(x, y)
     s  = sum(xc .* (y - mean(y))) / sum(xc.^2);
 end
 
-function effect_map(Ts, types, tdisp, bnames, tested, axsets, oris, out_dir, name, res)
-% Effect sizes as a heatmap: rows = type x bundle, columns = metric x axis
-% set (or x orientation). Colour = effect, text = FDR stars.
+function diff_map(Ts, types, tdisp, bnames, tested, axsets, oris, out_dir, name, res)
+% MSG vs ESG as a heatmap: rows = type x bundle, columns = metric x axis set
+% (or x orientation). Colour = relative difference of the two medians in
+% error form (1 - r2 for r2), (MSG - ESG) / mean(MSG, ESG), so + always means
+% MSG is the more affected and every metric shares one scale. Diamond = the
+% 95% interval of the difference excludes 0.
     rlab = {}; rsel = {};
     for t = 1:numel(types)
         for b = [1:numel(bnames), 0]
@@ -518,22 +523,28 @@ function effect_map(Ts, types, tdisp, bnames, tested, axsets, oris, out_dir, nam
             rsel{end+1} = {tdisp.(types{t}), sub}; %#ok<AGROW>
         end
     end
-    clab = {}; csel = {};
+    clab = {}; csel = {}; cworse = [];
     for k = 1:numel(tested)
         for a = 1:numel(axsets)
             for o = 1:numel(oris)
                 clab{end+1} = sprintf('%s | %s | %s', tested(k).txt, axsets{a}, oris{o}); %#ok<AGROW>
                 csel{end+1} = {tested(k).txt, axsets{a}, oris{o}}; %#ok<AGROW>
+                cworse(end+1) = tested(k).worse; %#ok<AGROW>
             end
         end
     end
-    E = nan(numel(rlab), numel(clab)); P = E;
+    E = nan(numel(rlab), numel(clab)); S = false(size(E));
     for i = 1:numel(rlab)
         for j = 1:numel(clab)
             row = Ts(strcmp(Ts.perturbation, rsel{i}{1}) & strcmp(Ts.subset, rsel{i}{2}) & ...
                 strcmp(Ts.metric, csel{j}{1}) & strcmp(Ts.axis_set, csel{j}{2}) & ...
                 strcmp(Ts.orientation, csel{j}{3}), :);
-            if ~isempty(row), E(i, j) = row.effect(1); P(i, j) = row.p_fdr(1); end
+            if isempty(row), continue; end
+            ma = row.median_a(1); mb = row.median_b(1);
+            if cworse(j) < 0, ma = 1 - ma; mb = 1 - mb; end
+            den = (abs(ma) + abs(mb)) / 2;
+            if den > 0, E(i, j) = (ma - mb) / den; end
+            S(i, j) = row.separated(1);
         end
     end
     fig = figure('Color', 'w', 'Position', [40 40 max(700, 70*numel(clab)) 40*numel(rlab) + 250]);
@@ -541,19 +552,18 @@ function effect_map(Ts, types, tdisp, bnames, tested, axsets, oris, out_dir, nam
     imagesc(ax, E, 'AlphaData', ~isnan(E));
     n = 128; t = linspace(0, 1, n)';
     cm = [ [t, t, ones(n,1)]; [ones(n,1), flipud(t), flipud(t)] ];   % blue-white-red
-    colormap(ax, cm); caxis(ax, [-1 1]);
-    cb = colorbar(ax); cb.Label.String = 'Effect size (+ = MSG larger)';
+    colormap(ax, cm); caxis(ax, [-2 2]);
+    cb = colorbar(ax); cb.Label.String = 'Relative difference (+ = MSG more affected)';
     for i = 1:numel(rlab)
         for j = 1:numel(clab)
-            if ~isnan(P(i, j))
-                text(ax, j, i, pt_sig_label(P(i, j)), 'HorizontalAlignment', 'center', ...
-                    'FontSize', 8);
-            end
+            text(ax, j, i, pt_sep_label(S(i, j)), 'HorizontalAlignment', 'center', ...
+                'FontSize', 8);
         end
     end
     set(ax, 'XTick', 1:numel(clab), 'XTickLabel', clab, 'XTickLabelRotation', 45, ...
         'YTick', 1:numel(rlab), 'YTickLabel', rlab, 'TickLabelInterpreter', 'none', ...
         'FontSize', 8);
-    title(ax, 'MSG vs ESG effect sizes (rank-biserial if paired, Cliff \delta otherwise)');
+    title(ax, {'MSG vs ESG: (MSG - ESG) / mean, error form (1 - r^2 for r^2)', ...
+        '\diamond = 95% interval of the difference excludes 0'});
     pt_save_figure(fig, out_dir, name, res);
 end

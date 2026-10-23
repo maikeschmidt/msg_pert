@@ -1,13 +1,14 @@
 function T = pt_stats_within(vals, bund, mags, opts)
-% pt_stats_within - Magnitude and perturbation-type statistics, one modality
+% pt_stats_within - Magnitude and perturbation-type comparisons, one modality
 %
-% Runs the three families of within-modality tests on one metric, where each
-% observation is one perturbation realisation (one random shift) summarised
-% over the cord:
+% Runs the three families of within-modality comparisons on one metric,
+% where each observation is one perturbation realisation (one random shift)
+% summarised over the cord. Every row carries an estimate and a bootstrap
+% interval; no significance test is applied (see pt_compare_two for why).
 %
 %   dose_response  per perturbation type, Spearman correlation between the
 %                  metric and the perturbation magnitude (|shift| in mm, or
-%                  mean % conductivity change), permutation p-value.
+%                  mean % conductivity change), bootstrap interval.
 %   bundle_pairs   per perturbation type, small vs medium, medium vs large,
 %                  small vs large. Unpaired: different random shifts.
 %   type_pairs     per bundle and pooled, every pair of perturbation types.
@@ -27,13 +28,14 @@ function T = pt_stats_within(vals, bund, mags, opts)
 %             .type_display  struct: type -> display name
 %             .bundle_names  {1 x n_bundles}
 %             .paired_types  {k x 2} pairs of types matched by index
-%             .n_perm        permutations
+%             .n_boot        bootstrap draws
+%             .level         interval coverage, e.g. 0.95
 %
 % OUTPUT:
-%   T     - table: family, subset, comparison, test, n_a, n_b, median_a,
-%           median_b, median_diff, effect, effect_name, p
-%           No multiple-comparison correction is applied here; the caller
-%           corrects across the whole family (see pt_fdr_by_group).
+%   T     - table: family, subset, comparison, design, n_a, n_b, median_a,
+%           median_b, estimate, estimate_name, ci_lo, ci_hi, separated
+%           estimate is the median difference (A - B) for comparisons and
+%           Spearman rho for dose response; separated = interval excludes 0.
 %
 % -------------------------------------------------------------------------
 % Copyright (c) 2026 University College London
@@ -49,11 +51,12 @@ nb    = numel(opts.bundle_names);
 % ---- dose response ------------------------------------------------------
 for t = 1:numel(types)
     ty = types{t};
-    [rho, p] = pt_spearman_perm(mags.(ty), vals.(ty), opts.n_perm);
+    [rho, ci] = pt_rank_corr(mags.(ty), vals.(ty), opts.n_boot, opts.level);
     ok = ~isnan(vals.(ty)) & ~isnan(mags.(ty));
     rows(end+1, :) = {'dose_response', opts.type_display.(ty), ...
-        'metric vs magnitude', 'Spearman (permutation)', sum(ok), sum(ok), ...
-        NaN, NaN, NaN, rho, 'Spearman rho', p}; %#ok<AGROW>
+        'metric vs magnitude', 'rank correlation', sum(ok), sum(ok), ...
+        NaN, NaN, rho, 'Spearman rho', ci(1), ci(2), ...
+        ~isnan(ci(1)) && (ci(1) > 0 || ci(2) < 0)}; %#ok<AGROW>
 end
 
 % ---- bundle pairs -------------------------------------------------------
@@ -63,8 +66,8 @@ for t = 1:numel(types)
     for k = 1:size(pairs, 1)
         b1 = pairs(k, 1); b2 = pairs(k, 2);
         R = pt_compare_two(vals.(ty)(bund.(ty) == b2), ...
-                           vals.(ty)(bund.(ty) == b1), false, opts.n_perm);
-        rows(end+1, :) = row_from(R, 'bundle_pairs', opts.type_display.(ty), ...
+                           vals.(ty)(bund.(ty) == b1), false, opts.n_boot, opts.level);
+        rows(end+1, :) = pt_compare_row(R, 'bundle_pairs', opts.type_display.(ty), ...
             sprintf('%s vs %s', opts.bundle_names{b2}, opts.bundle_names{b1})); %#ok<AGROW>
     end
 end
@@ -84,24 +87,17 @@ if numel(types) >= 2
                 ia = bund.(ta) == b;        ib = bund.(tb) == b;
             end
             paired = is_paired(ta, tb, opts.paired_types) && sum(ia) == sum(ib);
-            R = pt_compare_two(vals.(ta)(ia), vals.(tb)(ib), paired, opts.n_perm);
-            rows(end+1, :) = row_from(R, 'type_pairs', sub_name, ...
+            R = pt_compare_two(vals.(ta)(ia), vals.(tb)(ib), paired, opts.n_boot, opts.level);
+            rows(end+1, :) = pt_compare_row(R, 'type_pairs', sub_name, ...
                 sprintf('%s vs %s', opts.type_display.(ta), ...
                 opts.type_display.(tb))); %#ok<AGROW>
         end
     end
 end
 
-T = cell2table(rows, 'VariableNames', {'family', 'subset', 'comparison', ...
-    'test', 'n_a', 'n_b', 'median_a', 'median_b', 'median_diff', 'effect', ...
-    'effect_name', 'p'});
+T = cell2table(rows, 'VariableNames', pt_compare_row());
 end
 
-
-function r = row_from(R, family, subset, comparison)
-    r = {family, subset, comparison, R.test, R.n_a, R.n_b, R.median_a, ...
-         R.median_b, R.median_diff, R.effect, R.effect_name, R.p};
-end
 
 function tf = is_paired(a, b, pairs)
     tf = false;
