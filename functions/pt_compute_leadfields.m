@@ -47,7 +47,9 @@ function R = pt_compute_leadfields(method, geom_dir, keys, out_dir, opts)
 %   such mesh uses the same seed (opts.fem.seed), and 'fem_remesh' measures
 %   how much of a FEM source-shift effect re-meshing alone could produce.
 %
-% Files that already exist are skipped, so an interrupted run resumes.
+% Files that already exist are skipped, so an interrupted run resumes. A
+% geometry that fails (TetGen, a non-nested BEM surface) is reported and
+% skipped; the remaining geometries still run.
 %
 % USAGE:
 %   R = pt_compute_leadfields('bem',      geom_dir, keys, out_dir)
@@ -78,7 +80,9 @@ function R = pt_compute_leadfields(method, geom_dir, keys, out_dir, opts)
 %                   .cond          [0.33 0.33/40 0.62 0.05 0.23] S/m
 %
 % OUTPUT:
-%   R - struct: .written .skipped .missing (counts of files / geometries)
+%   R - struct: .written .skipped .missing (counts of files / geometries),
+%       .failed with .failed_keys and .failed_msgs: geometries whose solve
+%       raised an error. Each is reported and skipped; the rest still run.
 %
 % FILES WRITTEN (msg_fwd naming):
 %   bem       <out>/geometries_<key>/leadfield_<key>_bem_<array>.mat       leadfield_cord
@@ -109,7 +113,11 @@ if ~isfield(opts, 'arrays'),    opts.arrays    = {'back'}; end
 if ~isfield(opts, 'overwrite'), opts.overwrite = false;    end
 if ischar(keys), keys = {keys}; end
 
-R = struct('written', 0, 'skipped', 0, 'missing', 0);
+R = struct('written', 0, 'skipped', 0, 'missing', 0, 'failed', 0, ...
+           'failed_keys', {{}}, 'failed_msgs', {{}});
+if ~any(strcmp(method, {'bem', 'bslaw', 'bem_cond', 'fem', 'fem_cond', 'fem_remesh'}))
+    error('pt_compute_leadfields:method', 'Unknown method "%s".', method);
+end
 if isempty(out_dir)
     warning('pt_compute_leadfields:noOutDir', ...
         'No output folder for %s (config_pert_paths) — nothing computed.', method);
@@ -139,220 +147,229 @@ if any(strcmp(method, {'bem_cond', 'fem_cond'}))
 end
 
 for g = 1:numel(keys)
-    key  = keys{g};
-    gfile = fullfile(geom_dir, ['geometries_' key '.mat']);
-    fprintf('  [%s %d/%d] %s\n', method, g, numel(keys), key);
-    if ~isfile(gfile)
-        warning('pt_compute_leadfields:noGeometry', 'Geometry not found: %s', gfile);
-        R.missing = R.missing + 1;
-        continue
-    end
-
-    % Output files for this geometry, decided before anything is loaded so
-    % finished geometries cost nothing
-    switch method
-        case 'bem'
-            sub   = fullfile(out_dir, ['geometries_' key]);
-            fname = @(arr, b, s) fullfile(sub, sprintf('leadfield_%s_bem_%s.mat', key, arr));
-            jobs  = [0 0];
-        case 'bslaw'
-            sub   = out_dir;
-            fname = @(arr, b, s) fullfile(sub, sprintf('leadfield_geometries_%s_bslaw_%s.mat', key, arr));
-            jobs  = [0 0];
-        case 'bem_cond'
-            sub   = fullfile(out_dir, ['geometries_' key]);
-            fname = @(arr, b, s) fullfile(sub, sprintf( ...
-                'leadfield_%s_bem_cond_bundle%d_shift%d_%s.mat', key, b, s, arr));
-            [bb, ss] = ndgrid(1:numel(C.bundle_pct), 1:C.n_shifts);
-            jobs  = sortrows([bb(:), ss(:)]);
-        case 'fem'
-            sub   = fullfile(out_dir, ['geometries_' key]);
-            fname = @(arr, b, s) fullfile(sub, sprintf('cord_leadfield_%s_fem_%s.mat', key, arr));
-            jobs  = [0 0];
-        case 'fem_cond'
-            sub   = fullfile(out_dir, ['geometries_' key]);
-            fname = @(arr, b, s) fullfile(sub, sprintf( ...
-                'cord_leadfield_%s_fem_cond_bundle%d_shift%d_%s.mat', key, b, s, arr));
-            [bb, ss] = ndgrid(1:numel(C.bundle_pct), 1:C.n_shifts);
-            jobs  = sortrows([bb(:), ss(:)]);
-        case 'fem_remesh'
-            sub   = fullfile(out_dir, ['geometries_' key]);
-            fname = @(arr, b, s) fullfile(sub, sprintf( ...
-                'cord_leadfield_%s_fem_remesh%d_%s.mat', key, b, arr));
-            jobs  = [(1:numel(F.remesh_seeds))', F.remesh_seeds(:)];   % [k, seed]
-        otherwise
-            error('pt_compute_leadfields:method', 'Unknown method "%s".', method);
-    end
-    todo = false(size(jobs, 1), numel(opts.arrays));
-    for j = 1:size(jobs, 1)
-        for a = 1:numel(opts.arrays)
-            todo(j, a) = opts.overwrite || ~isfile(fname(opts.arrays{a}, jobs(j, 1), jobs(j, 2)));
-        end
-    end
-    R.skipped = R.skipped + sum(~todo(:));
-    if ~any(todo(:)), fprintf('    all files exist — skipped\n'); continue; end
-    if ~exist(sub, 'dir'), mkdir(sub); end
-
-    geoms = load(gfile);
-    [sens, labels, is_elec] = find_arrays(geoms, opts.arrays, key);
-    if isempty(sens), R.missing = R.missing + 1; continue; end
-    pos_mm = geoms.sources_cent.pos;
-
-    % ---- Biot-Savart -------------------------------------------------------
-    if strcmp(method, 'bslaw')
-        if is_elec
-            warning('pt_compute_leadfields:bslawElec', ...
-                'Biot-Savart needs coil arrays; %s has electrodes — skipped.', key);
+    try
+        key  = keys{g};
+        gfile = fullfile(geom_dir, ['geometries_' key '.mat']);
+        fprintf('  [%s %d/%d] %s\n', method, g, numel(keys), key);
+        if ~isfile(gfile)
+            warning('pt_compute_leadfields:noGeometry', 'Geometry not found: %s', gfile);
             R.missing = R.missing + 1;
             continue
         end
-        for a = 1:numel(sens)
-            if ~todo(1, strcmp(opts.arrays, labels{a})), continue; end
-            grad = sens{a};
-            leadfield_bs = struct();
-            t_lf = tic;
-            leadfield_bs.leadfield = bs_leadfield(grad, pos_mm);
-            t_lf = toc(t_lf);
-            leadfield_bs.label     = grad.label;
-            leadfield_bs.pos       = pos_mm;
-            leadfield_bs.unit      = 'mm';
-            leadfield_bs.model     = 'biot_savart_infinite';
-            leadfield_bs.geometry  = ['geometries_' key];
-            leadfield_bs.array     = labels{a};
-            leadfield_bs.mu0       = 4 * pi * 1e-7;
-            leadfield_bs.units_out = 'fT/nAm';
-            log_compute_time(time_log, struct('model', key, 'method', 'biot_savart', ...
-                'array', labels{a}, 'stage', 'leadfield', 'seconds', t_lf, ...
-                'n_sources', size(pos_mm, 1), 'n_channels', size(grad.tra, 1)));
-            save(fname(labels{a}, 0, 0), 'leadfield_bs', '-v7.3');
-            R.written = R.written + 1;
-        end
-        continue
-    end
 
-    % ---- FEM ---------------------------------------------------------------
-    if startsWith(method, 'fem')
-        if is_elec
-            warning('pt_compute_leadfields:femElec', ...
-                ['The DUNEuro solve msg_fwd uses is MEG only; %s has ' ...
-                 'electrodes — FEM skipped.'], key);
-            R.missing = R.missing + 1;
+        % Output files for this geometry, decided before anything is loaded so
+        % finished geometries cost nothing
+        switch method
+            case 'bem'
+                sub   = fullfile(out_dir, ['geometries_' key]);
+                fname = @(arr, b, s) fullfile(sub, sprintf('leadfield_%s_bem_%s.mat', key, arr));
+                jobs  = [0 0];
+            case 'bslaw'
+                sub   = out_dir;
+                fname = @(arr, b, s) fullfile(sub, sprintf('leadfield_geometries_%s_bslaw_%s.mat', key, arr));
+                jobs  = [0 0];
+            case 'bem_cond'
+                sub   = fullfile(out_dir, ['geometries_' key]);
+                fname = @(arr, b, s) fullfile(sub, sprintf( ...
+                    'leadfield_%s_bem_cond_bundle%d_shift%d_%s.mat', key, b, s, arr));
+                [bb, ss] = ndgrid(1:numel(C.bundle_pct), 1:C.n_shifts);
+                jobs  = sortrows([bb(:), ss(:)]);
+            case 'fem'
+                sub   = fullfile(out_dir, ['geometries_' key]);
+                fname = @(arr, b, s) fullfile(sub, sprintf('cord_leadfield_%s_fem_%s.mat', key, arr));
+                jobs  = [0 0];
+            case 'fem_cond'
+                sub   = fullfile(out_dir, ['geometries_' key]);
+                fname = @(arr, b, s) fullfile(sub, sprintf( ...
+                    'cord_leadfield_%s_fem_cond_bundle%d_shift%d_%s.mat', key, b, s, arr));
+                [bb, ss] = ndgrid(1:numel(C.bundle_pct), 1:C.n_shifts);
+                jobs  = sortrows([bb(:), ss(:)]);
+            case 'fem_remesh'
+                sub   = fullfile(out_dir, ['geometries_' key]);
+                fname = @(arr, b, s) fullfile(sub, sprintf( ...
+                    'cord_leadfield_%s_fem_remesh%d_%s.mat', key, b, arr));
+                jobs  = [(1:numel(F.remesh_seeds))', F.remesh_seeds(:)];   % [k, seed]
+            otherwise
+                error('pt_compute_leadfields:method', 'Unknown method "%s".', method);
+        end
+        todo = false(size(jobs, 1), numel(opts.arrays));
+        for j = 1:size(jobs, 1)
+            for a = 1:numel(opts.arrays)
+                todo(j, a) = opts.overwrite || ~isfile(fname(opts.arrays{a}, jobs(j, 1), jobs(j, 2)));
+            end
+        end
+        R.skipped = R.skipped + sum(~todo(:));
+        if ~any(todo(:)), fprintf('    all files exist — skipped\n'); continue; end
+        if ~exist(sub, 'dir'), mkdir(sub); end
+
+        geoms = load(gfile);
+        [sens, labels, is_elec] = find_arrays(geoms, opts.arrays, key);
+        if isempty(sens), R.missing = R.missing + 1; continue; end
+        pos_mm = geoms.sources_cent.pos;
+
+        % ---- Biot-Savart -------------------------------------------------------
+        if strcmp(method, 'bslaw')
+            if is_elec
+                warning('pt_compute_leadfields:bslawElec', ...
+                    'Biot-Savart needs coil arrays; %s has electrodes — skipped.', key);
+                R.missing = R.missing + 1;
+                continue
+            end
+            for a = 1:numel(sens)
+                if ~todo(1, strcmp(opts.arrays, labels{a})), continue; end
+                grad = sens{a};
+                leadfield_bs = struct();
+                t_lf = tic;
+                leadfield_bs.leadfield = bs_leadfield(grad, pos_mm);
+                t_lf = toc(t_lf);
+                leadfield_bs.label     = grad.label;
+                leadfield_bs.pos       = pos_mm;
+                leadfield_bs.unit      = 'mm';
+                leadfield_bs.model     = 'biot_savart_infinite';
+                leadfield_bs.geometry  = ['geometries_' key];
+                leadfield_bs.array     = labels{a};
+                leadfield_bs.mu0       = 4 * pi * 1e-7;
+                leadfield_bs.units_out = 'fT/nAm';
+                log_compute_time(time_log, struct('model', key, 'method', 'biot_savart', ...
+                    'array', labels{a}, 'stage', 'leadfield', 'seconds', t_lf, ...
+                    'n_sources', size(pos_mm, 1), 'n_channels', size(grad.tra, 1)));
+                save(fname(labels{a}, 0, 0), 'leadfield_bs', '-v7.3');
+                R.written = R.written + 1;
+            end
             continue
         end
-        src = struct('pos', pos_mm, 'inside', ones(size(pos_mm, 1), 1), 'unit', 'mm');
+
+        % ---- FEM ---------------------------------------------------------------
+        if startsWith(method, 'fem')
+            if is_elec
+                warning('pt_compute_leadfields:femElec', ...
+                    ['The DUNEuro solve msg_fwd uses is MEG only; %s has ' ...
+                     'electrodes — FEM skipped.'], key);
+                R.missing = R.missing + 1;
+                continue
+            end
+            src = struct('pos', pos_mm, 'inside', ones(size(pos_mm, 1), 1), 'unit', 'mm');
+            src = ft_convert_units(src, 'm');
+            grads_m = cellfun(@(x) ft_convert_units(x, 'm'), sens, 'UniformOutput', false);
+            mesh_key = fem_mesh_key(key);
+            for j = 1:size(jobs, 1)
+                if ~any(todo(j, :)), continue; end
+                switch method
+                    case 'fem'
+                        seed = F.seed; cond = F.cond; tag = '';
+                    case 'fem_cond'
+                        b = jobs(j, 1); s = jobs(j, 2);
+                        d = deltas{b}(s, :);
+                        seed = F.seed; cond = max(F.cond .* (1 + d), 1e-4);
+                        tag  = sprintf('_cond_bundle%d_shift%d', b, s);
+                    case 'fem_remesh'
+                        seed = jobs(j, 2); cond = F.cond;
+                        tag  = sprintf('_remesh%d', jobs(j, 1));
+                end
+                [tet, minfo] = fem_mesh(mesh_dir, geom_dir, mesh_key, seed, F, time_log, ...
+                    size(pos_mm, 1));
+                for a = 1:numel(grads_m)
+                    ai = strcmp(opts.arrays, labels{a});
+                    if ~todo(j, ai), continue; end
+                    work = fullfile(out_dir, 'work', [key tag], labels{a});
+                    if exist(work, 'dir'), rmdir(work, 's'); end   % DUNEuro needs a fresh folder
+                    mkdir(work);
+                    S = struct('dir', work, 'mesh', tet, 'grad', grads_m{a}, 'src', src, ...
+                        'cond', cond, 'binpath', F.binpath);
+                    t_solve = tic;
+                    Lfem = fem_calc_fwds(S) * 1e6;                  % T/(A*m) -> fT/nAm
+                    t_solve = toc(t_solve);
+                    log_compute_time(time_log, struct('model', [key tag], 'method', 'fem', ...
+                        'array', labels{a}, 'stage', 'solve', 'seconds', t_solve, ...
+                        'n_sources', size(pos_mm, 1), 'n_channels', size(Lfem, 1), ...
+                        'n_nodes', minfo.n_nodes, 'n_elements', minfo.n_tets));
+                    leadfield_ft = convert_duneuro_to_fieldtrip(Lfem, src, grads_m{a}, S);
+                    leadfield_ft.units_out  = 'fT/nAm';
+                    leadfield_ft.geometry   = ['geometries_' key];
+                    leadfield_ft.mesh_from  = mesh_key;
+                    leadfield_ft.mesh_seed  = seed;
+                    leadfield_ft.fem_cond   = cond;
+                    if strcmp(method, 'fem_cond'), leadfield_ft.cond_delta_pct = d * 100; end
+                    save(fname(labels{a}, jobs(j, 1), jobs(j, 2)), 'leadfield_ft', '-v7.3');
+                    R.written = R.written + 1;
+                end
+            end
+            continue
+        end
+
+        % ---- BEM ---------------------------------------------------------------
+        [bnd, cond0, info] = bem_build_boundaries(geoms, ...
+            struct('torso_keep', 0.5, 'cratio', 40, 'label', key));
+        src = struct('pos', pos_mm, 'inside', true(size(pos_mm, 1), 1), 'unit', 'mm');
         src = ft_convert_units(src, 'm');
-        grads_m = cellfun(@(x) ft_convert_units(x, 'm'), sens, 'UniformOutput', false);
-        mesh_key = fem_mesh_key(key);
+        sens_m = cellfun(@(x) ft_convert_units(x, 'm'), sens, 'UniformOutput', false);
+
         for j = 1:size(jobs, 1)
             if ~any(todo(j, :)), continue; end
-            switch method
-                case 'fem'
-                    seed = F.seed; cond = F.cond; tag = '';
-                case 'fem_cond'
-                    b = jobs(j, 1); s = jobs(j, 2);
-                    d = deltas{b}(s, :);
-                    seed = F.seed; cond = max(F.cond .* (1 + d), 1e-4);
-                    tag  = sprintf('_cond_bundle%d_shift%d', b, s);
-                case 'fem_remesh'
-                    seed = jobs(j, 2); cond = F.cond;
-                    tag  = sprintf('_remesh%d', jobs(j, 1));
+            if strcmp(method, 'bem_cond')
+                b = jobs(j, 1); s = jobs(j, 2);
+                d = deltas{b}(s, :);
+                % Each compartment's conductivity scaled; every outer value is
+                % the conductivity of the compartment outside that boundary, so
+                % it follows the same scaling: torso outside every boundary
+                % (bone included, and the cord when a gap separates it from the
+                % bone), bone outside the cord only for continuous bone with the
+                % cord inside it (bem_build_boundaries' test), nothing outside
+                % the torso
+                ci = max(cond0(1, :) .* (1 + d), 1e-4);
+                co = repmat(ci(end), 1, numel(ci));
+                co(end) = 0;
+                if info.bone_encloses_cord, co(1) = ci(2); end
+                conductivity = [ci; co];
+                fprintf('    bundle %d shift %d: +%s %%\n', b, s, ...
+                    strjoin(arrayfun(@(x) sprintf('%.1f', x), d * 100, 'UniformOutput', false), '/'));
+            else
+                conductivity = cond0;
             end
-            [tet, minfo] = fem_mesh(mesh_dir, geom_dir, mesh_key, seed, F, time_log, ...
-                size(pos_mm, 1));
-            for a = 1:numel(grads_m)
+
+            t_hm = tic;
+            vol  = ft_prepare_headmodel(struct('method', 'hbf', ...
+                'conductivity', conductivity, 'checkmesh', 'false'), bnd);
+            t_hm = toc(t_hm);
+            log_compute_time(time_log, struct('model', key, 'method', method, ...
+                'stage', 'headmodel', 'seconds', t_hm, 'n_sources', size(pos_mm, 1), ...
+                'n_nodes', info.n_vertices, 'n_elements', info.n_triangles));
+
+            for a = 1:numel(sens_m)
                 ai = strcmp(opts.arrays, labels{a});
                 if ~todo(j, ai), continue; end
-                work = fullfile(out_dir, 'work', [key tag], labels{a});
-                if exist(work, 'dir'), rmdir(work, 's'); end   % DUNEuro needs a fresh folder
-                mkdir(work);
-                S = struct('dir', work, 'mesh', tet, 'grad', grads_m{a}, 'src', src, ...
-                    'cond', cond, 'binpath', F.binpath);
-                t_solve = tic;
-                Lfem = fem_calc_fwds(S) * 1e6;                  % T/(A*m) -> fT/nAm
-                t_solve = toc(t_solve);
-                log_compute_time(time_log, struct('model', [key tag], 'method', 'fem', ...
-                    'array', labels{a}, 'stage', 'solve', 'seconds', t_solve, ...
-                    'n_sources', size(pos_mm, 1), 'n_channels', size(Lfem, 1), ...
-                    'n_nodes', minfo.n_nodes, 'n_elements', minfo.n_tets));
-                leadfield_ft = convert_duneuro_to_fieldtrip(Lfem, src, grads_m{a}, S);
-                leadfield_ft.units_out  = 'fT/nAm';
-                leadfield_ft.geometry   = ['geometries_' key];
-                leadfield_ft.mesh_from  = mesh_key;
-                leadfield_ft.mesh_seed  = seed;
-                leadfield_ft.fem_cond   = cond;
-                if strcmp(method, 'fem_cond'), leadfield_ft.cond_delta_pct = d * 100; end
-                save(fname(labels{a}, jobs(j, 1), jobs(j, 2)), 'leadfield_ft', '-v7.3');
+                cfg = struct('sourcemodel', src, 'headmodel', vol, 'reducerank', 'no', ...
+                    'channel', 'all', 'normalize', 'no', 'dipoleunit', 'nA*m');
+                if is_elec, cfg.elec = sens_m{a}; else, cfg.grad = sens_m{a}; end
+                t_lf = tic;
+                leadfield_cord = ft_prepare_leadfield(cfg);
+                t_lf = toc(t_lf);
+                log_compute_time(time_log, struct('model', key, 'method', method, ...
+                    'array', labels{a}, 'stage', 'leadfield', 'seconds', t_lf, ...
+                    'n_sources', size(pos_mm, 1), ...
+                    'n_channels', size(leadfield_cord.leadfield{1}, 1), ...
+                    'n_nodes', info.n_vertices, 'n_elements', info.n_triangles));
+                leadfield_cord.geometry = ['geometries_' key];
+                leadfield_cord.array    = labels{a};
+                if strcmp(method, 'bem_cond')
+                    leadfield_cord.model          = 'bem_cond';
+                    leadfield_cord.cond_bundle    = b;
+                    leadfield_cord.cond_shift     = s;
+                    leadfield_cord.nominal_cond   = cond0;
+                    leadfield_cord.perturbed_cond = conductivity;
+                    leadfield_cord.cond_delta_pct = d * 100;
+                end
+                save(fname(labels{a}, jobs(j, 1), jobs(j, 2)), 'leadfield_cord', '-v7.3');
                 R.written = R.written + 1;
             end
         end
-        continue
-    end
-
-    % ---- BEM ---------------------------------------------------------------
-    [bnd, cond0, info] = bem_build_boundaries(geoms, ...
-        struct('torso_keep', 0.5, 'cratio', 40, 'label', key));
-    src = struct('pos', pos_mm, 'inside', true(size(pos_mm, 1), 1), 'unit', 'mm');
-    src = ft_convert_units(src, 'm');
-    sens_m = cellfun(@(x) ft_convert_units(x, 'm'), sens, 'UniformOutput', false);
-
-    for j = 1:size(jobs, 1)
-        if ~any(todo(j, :)), continue; end
-        if strcmp(method, 'bem_cond')
-            b = jobs(j, 1); s = jobs(j, 2);
-            d = deltas{b}(s, :);
-            % Each compartment's conductivity scaled; every outer value is
-            % the conductivity of the compartment outside that boundary, so
-            % it follows the same scaling: torso outside every boundary
-            % (bone included, and the cord when a gap separates it from the
-            % bone), bone outside the cord only for continuous bone with the
-            % cord inside it (bem_build_boundaries' test), nothing outside
-            % the torso
-            ci = max(cond0(1, :) .* (1 + d), 1e-4);
-            co = repmat(ci(end), 1, numel(ci));
-            co(end) = 0;
-            if info.bone_encloses_cord, co(1) = ci(2); end
-            conductivity = [ci; co];
-            fprintf('    bundle %d shift %d: +%s %%\n', b, s, ...
-                strjoin(arrayfun(@(x) sprintf('%.1f', x), d * 100, 'UniformOutput', false), '/'));
-        else
-            conductivity = cond0;
-        end
-
-        t_hm = tic;
-        vol  = ft_prepare_headmodel(struct('method', 'hbf', ...
-            'conductivity', conductivity, 'checkmesh', 'false'), bnd);
-        t_hm = toc(t_hm);
-        log_compute_time(time_log, struct('model', key, 'method', method, ...
-            'stage', 'headmodel', 'seconds', t_hm, 'n_sources', size(pos_mm, 1), ...
-            'n_nodes', info.n_vertices, 'n_elements', info.n_triangles));
-
-        for a = 1:numel(sens_m)
-            ai = strcmp(opts.arrays, labels{a});
-            if ~todo(j, ai), continue; end
-            cfg = struct('sourcemodel', src, 'headmodel', vol, 'reducerank', 'no', ...
-                'channel', 'all', 'normalize', 'no', 'dipoleunit', 'nA*m');
-            if is_elec, cfg.elec = sens_m{a}; else, cfg.grad = sens_m{a}; end
-            t_lf = tic;
-            leadfield_cord = ft_prepare_leadfield(cfg);
-            t_lf = toc(t_lf);
-            log_compute_time(time_log, struct('model', key, 'method', method, ...
-                'array', labels{a}, 'stage', 'leadfield', 'seconds', t_lf, ...
-                'n_sources', size(pos_mm, 1), ...
-                'n_channels', size(leadfield_cord.leadfield{1}, 1), ...
-                'n_nodes', info.n_vertices, 'n_elements', info.n_triangles));
-            leadfield_cord.geometry = ['geometries_' key];
-            leadfield_cord.array    = labels{a};
-            if strcmp(method, 'bem_cond')
-                leadfield_cord.model          = 'bem_cond';
-                leadfield_cord.cond_bundle    = b;
-                leadfield_cord.cond_shift     = s;
-                leadfield_cord.nominal_cond   = cond0;
-                leadfield_cord.perturbed_cond = conductivity;
-                leadfield_cord.cond_delta_pct = d * 100;
-            end
-            save(fname(labels{a}, jobs(j, 1), jobs(j, 2)), 'leadfield_cord', '-v7.3');
-            R.written = R.written + 1;
-        end
+    catch me
+        % One geometry that cannot be solved (a bad mesh, a surface pushed
+        % through another) must not stop the rest: report it and go on
+        R.failed = R.failed + 1;
+        R.failed_keys{end+1} = key;
+        R.failed_msgs{end+1} = me.message;
+        fprintf(2, '    FAILED %s: %s\n', key, me.message);
     end
 end
 end
