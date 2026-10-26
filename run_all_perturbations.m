@@ -30,7 +30,9 @@
 %
 %   Set the flags below to run a subset. Every step skips files that already
 %   exist, so an interrupted run resumes where it stopped, and re-running
-%   after adding a method computes only what is missing.
+%   after adding a method computes only what is missing. A geometry that
+%   fails is reported and skipped; the rest of its step still runs, and the
+%   summary lists it.
 %
 % BEFORE RUNNING
 %   - config_pert_paths: data_root, and the original geometry from msg_coreg
@@ -194,11 +196,16 @@ function ok = try_step(fn, label)
 end
 
 function report(R)
-    fprintf('  written %d, already present %d, geometries missing %d\n', ...
-        R.written, R.skipped, R.missing);
-    if R.missing > 0
-        error('%d geometry file(s) could not be computed (see warnings above).', ...
-            R.missing);
+    fprintf('  written %d, already present %d, geometries missing %d, failed %d\n', ...
+        R.written, R.skipped, R.missing, R.failed);
+    for k = 1:R.failed
+        fprintf(2, '    failed: %s — %s\n', R.failed_keys{k}, R.failed_msgs{k});
+    end
+    if R.missing > 0 || R.failed > 0
+        % Every other geometry has already run; this only marks the step
+        % FAILED in the summary so the gap is not missed
+        error('%d geometr(ies) missing and %d failed: %s', R.missing, R.failed, ...
+            strjoin(R.failed_keys, ', '));
     end
 end
 
