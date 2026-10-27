@@ -60,8 +60,8 @@
 
 % ROOTS — in most cases these are the only two lines that need changing
 
-data_root    = 'D:\Simulations\Pertubations';      % SET THIS
-results_root = fullfile(data_root, 'results');     % SET THIS (or leave under data_root)
+data_root    = 'D:\Thesis\chapter_6';      % SET THIS
+results_root = fullfile(data_root);     % SET THIS (or leave under data_root)
 
 % DUNEuro, for the FEM lead fields. The FOLDER holding
 % bst_duneuro_meeg_win64.exe (not the executable), somewhere group policy
