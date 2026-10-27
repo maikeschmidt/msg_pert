@@ -271,7 +271,7 @@ shiftval = @(NS, ty, nm, L, c, o) mean(NS.pert.(ty).(fld).(nm)(:, L, :, c, o), 3
                                 det(isnan(X)) = false;
                                 rate.(dm{1})(L) = mean(det(:));
                             end
-                            [crit, crit_txt] = critical_level(levels, rate.(dm{1}), noise_detect_rate);
+                            [crit, crit_txt] = pt_critical_level(levels, rate.(dm{1}), noise_detect_rate);
                             if cc == numel(NS.axcfg_names)
                                 crit_rows(end+1, :) = {NS.system.label, pert_type_display.(ty), ...
                                     bundle_names{b}, NS.ori_labels{oo}, mtxt(dm{1}), crit, crit_txt}; %#ok<SAGROW>
@@ -604,23 +604,3 @@ function style_level_axis(ax, xpos, lbl, show_x)
     if show_x, xlabel(ax, 'Noise (\times system floor)'); end
 end
 
-function [crit, txt] = critical_level(levels, rate, target)
-% Highest noise level at which the detection rate still reaches target,
-% log-interpolated between simulated levels. Level 0 is excluded.
-    nz = levels > 0;
-    lv = levels(nz); rt = rate(nz);
-    if all(rt >= target)
-        crit = Inf; txt = sprintf('> %g', lv(end));
-    elseif rt(1) < target
-        crit = 0;   txt = sprintf('< %g', lv(1));
-    else
-        i = find(rt >= target, 1, 'last');
-        if i == numel(lv)
-            crit = lv(end);
-        else
-            f = (rt(i) - target) / (rt(i) - rt(i+1));
-            crit = exp(log(lv(i)) + f * (log(lv(i+1)) - log(lv(i))));
-        end
-        txt = sprintf('%.3g', crit);
-    end
-end

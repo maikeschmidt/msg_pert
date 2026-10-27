@@ -137,6 +137,7 @@ once its inputs exist.
 | 4 | `pt_compare_modalities` | both `pert_metrics.mat` | ~5 min | `4_msg_vs_esg` |
 | 5 | `pt_noise_simulate`, then `pt_noise_analyse` | lead fields + metrics | 20–90 min | `5_noise/c7`, `5_noise/cord` |
 | 6 | `pt_summary_table` | the stage `*_long.csv` files | seconds | `6_summary` |
+| 7 | `pt_cord_activity` | lead fields + metrics | 10–30 min | `7_cord_activity` |
 
 \*Rough times for 110 sources and ~100 sensors per axis. Stage 5 scales with
 `noise_n_real` × number of noise levels × number of systems (seven by
@@ -164,7 +165,8 @@ Stages 1, 4, 5 and 6 use both modalities and need no selection.
 | lead-field files, `analysis_array`, `unit_scale_mode` | stage 0 |
 | shift vectors, `metric_orientations`, `metric_defaults` (msg_fwd) | stage 0 (`pt_compute_metrics`) |
 | interval settings, pairing flags, figure options | the stage concerned, then 6 |
-| noise systems, `evoked_src_mm`, floors, waveform, sweep | stage 5, then 6 |
+| noise systems, `evoked_src_mm`, floors, waveform, sweep | stage 5, then 6, then 7 |
+| `cord_*` (N11 volley, N13 extents) | stage 7 |
 
 ### Stage 0 — check the scale log
 

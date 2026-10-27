@@ -18,7 +18,9 @@ Here the model is taken as given and **noise** is the variable.
 > the measured-topoplot figures and quick single-geometry checks. The noise
 > floors are copied into `config_pert.m` — keep the two in step. The source
 > waveform is not: stage 5 simulates an N13-like response at C7, this package
-> its own 70 Hz burst.
+> its own 70 Hz burst. This package uses BEM (and Biot-Savart topoplots)
+> only; FEM is in stages 5 and 7 of the main pipeline, and stage 7 simulates
+> the N11 volley and N13 together as a recording.
 
 ## Pipeline
 

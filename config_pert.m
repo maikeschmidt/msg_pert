@@ -100,6 +100,7 @@
 %     modality_compare_method - forward model used for MSG vs ESG
 %     baseline_models, baseline_pairs, baseline_topo_src_mm   (stage 1)
 %     noise_systems, evoked_src_mm, noise_* waveform and sweep   (stage 5)
+%     cord_* N11 volley and N13 extent sweep                     (stage 7)
 %     fig_resolution       - PNG resolution (dpi)
 %
 % NOTES:
@@ -706,6 +707,39 @@ noise_detect_rate = 0.8;
 noise_compare_pairs = {'squid_msg', 'esg'; 'op_msg', 'esg'; 'squid_msg', 'op_msg'; ...
                        'squid_msg_bs', 'squid_msg'; 'op_msg_bs', 'op_msg'; ...
                        'squid_msg_fem', 'squid_msg'; 'op_msg_fem', 'op_msg'};
+
+% ---- Stage 7: cord activity — N11 volley and N13, BEM vs FEM ------------
+% A spatiotemporal recording of the spinal response to median nerve
+% stimulation, summed over every active source, instead of stage 5's one
+% source at a time:
+%   N11  the afferent volley entering the cord at C7 (cord_n11_entry_mm) and
+%        ascending in the dorsal columns at cord_n11_velocity. A propagating
+%        volley is a quadrupole: a leading (depolarisation) and a trailing
+%        (repolarisation) longitudinal dipole of opposite sign,
+%        cord_n11_lag_mm apart (conduction velocity x action-potential
+%        duration). 0 gives a single travelling dipole.
+%   N13  the stationary dorsal-horn response at C7, transverse, with the
+%        stage-5 waveform (noise_latency, noise_env_sd, noise_peak_nAm).
+%        Its spatial extent is swept over cord_n13_fwhm_mm: a Gaussian patch
+%        along the cord, the same total moment at every extent (0 = one
+%        source). This is the axis on which BEM and FEM are compared.
+% Each system's noise floor and bandwidth are applied as in stage 5, here
+% with a zero-phase low-pass at the system bandwidth, so a narrow-band
+% system smears the fast N11 as a real recording would. Distances are along
+% the cord from the top of the source space, so rostral = smaller.
+cord_fs            = 10000;   % Hz; the volley crosses a 5 mm source spacing in < 0.1 ms
+cord_duration      = 0.030;   % s
+cord_n11_onset     = 0.0105;  % s, volley at the entry level
+cord_n11_entry_mm  = evoked_src_mm;    % C7 root entry
+cord_n11_end_mm    = [];      % [] = the rostral end of the source space
+cord_n11_velocity  = 60;      % m/s, dorsal-column conduction
+cord_n11_lag_mm    = 30;      % leading-to-trailing dipole separation (0 = single dipole)
+cord_n11_nAm       = 2;       % nA*m per dipole
+cord_n11_ramp      = 0.0003;  % s, onset/offset taper of the volley
+cord_n11_ori       = 'RC';    % longitudinal
+cord_n13_ori       = 'VD';    % transverse (dorsal-horn dipole)
+cord_n13_fwhm_mm   = [0, 5, 10, 20, 40];   % N13 extents swept (mm, full width at half maximum)
+cord_n13_head_fwhm = 10;      % extent used for figures that show one extent
 
 % Figure resolution (dpi)
 fig_resolution = 600;

@@ -104,6 +104,8 @@ Phase 2 — staged analysis  (run_all_pert_analysis)
                             the MSG systems also through FEM and through the
                             Biot-Savart upper bound), stages 2–4 repeated
   6  pt_summary_table       every source of error on one scale
+  7  pt_cord_activity       N11 volley + N13 as a recording, N13 extent swept:
+                            BEM vs FEM divergence, detectability, perturbations
 ```
 
 ### What each stage answers
@@ -115,6 +117,7 @@ Phase 2 — staged analysis  (run_all_pert_analysis)
 | 4 | Do MSG and ESG respond differently to the same perturbation, and do they rank the perturbation types differently? |
 | 5 | For an N13-like evoked response at C7: how well is it recovered through each system's noise with perfect coregistration, and once the geometry is wrong, which perturbations are still visible, at what noise level do they disappear, do the stage-4 differences survive, and how far below the Biot-Savart upper bound does each MSG system sit? |
 | 6 | Of model type, geometry, conductivity and noise, which dominates — over the cord and at C7? |
+| 7 | With the N11 volley and the N13 together as a recording, and the N13 spread from one source to a wide patch: do BEM and FEM diverge more for spread sources, is a spread N13 more or less detectable through each system's noise under each model, and does spreading change how robust each model is to the perturbations? |
 
 Every stage reports the same four metrics (RE, r², RDM and gain from lnMAG)
 and the same kind of summary — medians with bootstrap intervals, as msg_fwd
@@ -326,6 +329,7 @@ Outputs go to numbered folders under `stage_results_dir`:
 | `4_msg_vs_esg` | headline comparison, difference maps, interaction, slopes, along-cord differences |
 | `5_noise/c7`, `5_noise/cord` | noise alone, perturbation + noise, detectability, critical noise levels, error budget, systems compared per level — at the C7 source and over the cord |
 | `6_summary` | one ranking of every source of error per modality, over the cord and at C7 |
+| `7_cord_activity` | simulated N11 + N13, recordings per model, BEM–FEM divergence, critical noise levels and perturbation effects, all against N13 extent |
 
 Every table is written as `.csv` (every orientation and axis set), `.txt`
 (readable) and `.tex` (booktabs; headline orientation, whole array).
@@ -349,6 +353,7 @@ Every table is written as `.csv` (every orientation and axis set), `.txt`
 | `pt_noise_simulate` | 5 | An N13-like evoked response at C7 (and at every cord position) through every perturbed field and trial-averaged sensor noise, scored against the true field |
 | `pt_noise_analyse` | 5 | Noise alone, perturbation + noise, detectability, critical noise level, error budget, system comparisons per level (including the Biot-Savart bound), within-modality comparisons under noise — once at C7, once over the cord |
 | `pt_summary_table` | 6 | Every source of error ranked on one scale, over the cord and at C7 |
+| `pt_cord_activity` | 7 | The N11 volley and N13 as a sensors × time recording through every model and system, N13 extent swept; BEM vs FEM divergence, detectability and perturbation sensitivity |
 | `pt_modality` | — | Get/set the active modality; survives each script's `clearvars` |
 | `pt_run_step` | — | Run one script in an isolated workspace |
 | `pt_diagnose_leadfields` | — | Inspect a loaded lead-field set |

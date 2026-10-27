@@ -16,6 +16,10 @@
 %                           pt_noise_analyse       realistic sensor noise; stages
 %                                                  2-4 repeated
 %   6  Summary              pt_summary_table       every factor on one scale
+%   7  Cord activity        pt_cord_activity       N11 volley + N13 as a
+%                                                  recording, N13 extent swept:
+%                                                  BEM vs FEM divergence,
+%                                                  detectability, perturbations
 %
 %   Optional, off by default: the earlier r2-only figures and tables
 %   (pt_compute_rsq, pt_plot_curves, pt_plot_heatmaps, pt_plot_displacement,
@@ -56,6 +60,7 @@ run_stage3 = true;    % within ESG
 run_stage4 = true;    % MSG vs ESG
 run_stage5 = true;    % sensor noise (simulation is the slow part)
 run_stage6 = true;    % summary across stages
+run_stage7 = true;    % cord activity: N11 + N13 recording, BEM vs FEM by N13 extent
 run_legacy = false;   % earlier r2-only figures and tables, per modality
 
 fprintf('  MSG Perturbation Pipeline — Phase 2: analysis\n');
@@ -132,6 +137,15 @@ if run_stage6
     pt_modality('clear');
     banner('STAGE 6 — summary across stages');
     status(end+1, :) = {'6 summary', pt_run_step('pt_summary_table.m')};
+end
+
+% =========================================================================
+% STAGE 7 — cord activity
+% =========================================================================
+if run_stage7
+    pt_modality('clear');
+    banner('STAGE 7 — cord activity: N11 volley and N13 extent');
+    status(end+1, :) = {'7 cord activity', pt_run_step('pt_cord_activity.m')};
 end
 
 % =========================================================================
