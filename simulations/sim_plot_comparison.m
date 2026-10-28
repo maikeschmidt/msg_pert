@@ -49,6 +49,7 @@ if ~exist(save_dir, 'dir'); mkdir(save_dir); end
 nf     = sim_noise_factors;
 n_ori  = numel(sim_orientations);
 n_lev  = numel(nf);
+xl     = 1:n_lev;   % noise levels at evenly spaced positions, labelled with their value
 
 group_title = containers.Map( ...
     {'source', 'sensor', 'cond'}, ...
@@ -108,10 +109,10 @@ for si = 1:numel(sys_shorts)
             % Baseline reference (band = spread across cord)
             if ~isempty(base_cm)
                 bcol = sim_bundle_colors('none');
-                fill(ax, [nf, fliplr(nf)], ...
+                fill(ax, [xl, fliplr(xl)], ...
                      [base_lo(o, :), fliplr(base_hi(o, :))], bcol, ...
                     'FaceAlpha', 0.10, 'EdgeColor', 'none', 'HandleVisibility', 'off');
-                h0 = plot(ax, nf, base_cm(o, :), '--', 'Color', bcol, ...
+                h0 = plot(ax, xl, base_cm(o, :), '--', 'Color', bcol, ...
                     'LineWidth', pub_line_width);
                 leg_h(end+1) = h0; leg_t{end+1} = 'baseline (unperturbed)'; %#ok<SAGROW>
             end
@@ -122,9 +123,9 @@ for si = 1:numel(sys_shorts)
                 if isempty(be); continue; end
                 [cm, lo, hi] = load_cordstats(be(1), n_ori);
                 col = sim_bundle_colors(bundle_order{bo});
-                fill(ax, [nf, fliplr(nf)], [lo(o, :), fliplr(hi(o, :))], col, ...
+                fill(ax, [xl, fliplr(xl)], [lo(o, :), fliplr(hi(o, :))], col, ...
                     'FaceAlpha', 0.13, 'EdgeColor', 'none', 'HandleVisibility', 'off');
-                hh  = plot(ax, nf, cm(o, :), '-', 'Color', col, ...
+                hh  = plot(ax, xl, cm(o, :), '-', 'Color', col, ...
                     'LineWidth', pub_line_width, 'Marker', 'o', ...
                     'MarkerSize', pub_marker_size, 'MarkerFaceColor', col);
                 leg_h(end+1) = hh; leg_t{end+1} = bundle_order{bo}; %#ok<SAGROW>
@@ -136,8 +137,8 @@ for si = 1:numel(sys_shorts)
                 end
             end
 
-            xline(ax, 1, ':', 'Color', [0.5 0.5 0.5], 'HandleVisibility', 'off');
-            set(ax, 'XScale', 'log', 'XTick', nf, ...
+            xline(ax, xl(abs(nf - 1) < 1e-12), ':', 'Color', [0.5 0.5 0.5], 'HandleVisibility', 'off');
+            set(ax, 'XTick', xl, 'XLim', [0.7, n_lev + 0.3], ...
                 'XTickLabel', arrayfun(@(f) sprintf('%gx', f), nf, ...
                                        'UniformOutput', false));
             xlabel(ax, 'Sensor noise (\times baseline)');
@@ -162,6 +163,8 @@ for si = 1:numel(sys_shorts)
         'FontSize', 9, 'Color', [0.4 0.4 0.4]);
 
     fname = sprintf('comparison_%s', ss);
+    pt_distinct_markers(fig);   % one marker shape per series (msg_pert functions/)
+    pt_uniform_axes(fig);       % shared axis ranges across panels
     exportgraphics(fig, fullfile(save_dir, [fname '.png']), 'Resolution', 300);
     saveas(fig, fullfile(save_dir, [fname '.fig']));
     close(fig);

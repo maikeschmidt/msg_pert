@@ -37,8 +37,10 @@
 %   Sphere:<sphere_path>/leadfield_geometries_<geom_full>_sphere_<array>.mat
 %          Variable: leadfield_sphere
 %
-%   BEM and FEM files live in per-geometry subfolders; BS and sphere files
-%   are in a flat folder (no subfolders) — consistent with msg_fwd output.
+%   BEM and FEM files are looked for in per-geometry subfolders first
+%   (msg_fwd's layout), then directly in the method folder, then anywhere
+%   below it, so a FEM run that wrote every geometry into one folder still
+%   loads. BS and sphere files are in a flat folder.
 %
 % OUTPUT FILE:
 %   <forward_fields_base>/leadfield_scale_log.csv   factor applied to each file
@@ -153,9 +155,8 @@ for g = 1:numel(all_geom_names)
     % Variable: leadfield_cord | Scale: 1e15
     % ------------------------------------------------------------------
     if have_bem
-        bem_subdir = fullfile(bem_path, ['geometries_' geom_short]);
-        bem_files  = dir(fullfile(bem_subdir, ...
-            ['leadfield_' geom_short '_bem_' analysis_array '.mat']));
+        bem_files  = find_lf(bem_path, geom_short, ...
+            ['leadfield_' geom_short '_bem_' analysis_array '.mat']);
 
         for bf = 1:numel(bem_files)
             fname = bem_files(bf).name;
@@ -165,7 +166,7 @@ for g = 1:numel(all_geom_names)
             arr = tok{1}{1};
             key = ['bem_' geom_full];
 
-            tmp = load(fullfile(bem_subdir, fname), 'leadfield_cord');
+            tmp = load(fullfile(bem_files(bf).folder, fname), 'leadfield_cord');
             if ~isfield(tmp, 'leadfield_cord')
                 warning('Variable leadfield_cord not found in: %s', fname);
                 continue
@@ -188,9 +189,8 @@ for g = 1:numel(all_geom_names)
     % Variable: leadfield_ft | Scale: 1
     % ------------------------------------------------------------------
     if have_fem
-        fem_subdir = fullfile(fem_path, ['geometries_' geom_short]);
-        fem_files  = dir(fullfile(fem_subdir, ...
-            ['cord_leadfield_' geom_short '_fem_' analysis_array '.mat']));
+        fem_files  = find_lf(fem_path, geom_short, ...
+            ['cord_leadfield_' geom_short '_fem_' analysis_array '.mat']);
 
         for ff = 1:numel(fem_files)
             fname = fem_files(ff).name;
@@ -200,7 +200,7 @@ for g = 1:numel(all_geom_names)
             arr = tok{1}{1};
             key = ['fem_' geom_full];
 
-            tmp = load(fullfile(fem_subdir, fname), 'leadfield_ft');
+            tmp = load(fullfile(fem_files(ff).folder, fname), 'leadfield_ft');
             if ~isfield(tmp, 'leadfield_ft')
                 warning('Variable leadfield_ft not found in: %s', fname);
                 continue
@@ -315,8 +315,12 @@ for x = extra
     fprintf('\n  --- %s ---\n', x.name);
     sub   = fullfile(x.dir, ['geometries_' ref_short]);
     files = dir(fullfile(sub, [x.prefix '*_' analysis_array '.mat']));
+    if isempty(files)   % not in the per-geometry folder: anywhere below the method folder
+        files = dir(fullfile(x.dir, '**', [x.prefix '*_' analysis_array '.mat']));
+        files = files(~contains({files.folder}, [filesep 'work']));
+    end
     if isempty(files)
-        warning('No %s files found in: %s', x.name, sub);
+        warning('No %s files found under: %s', x.name, x.dir);
     end
     for cf = 1:numel(files)
         fname = files(cf).name;
@@ -325,7 +329,7 @@ for x = extra
         arr = tok{1}{2};
         key = sprintf(x.keyfmt, cond_sensitivity_ref_key, tok{1}{1});
 
-        tmp = load(fullfile(sub, fname), x.var);
+        tmp = load(fullfile(files(cf).folder, fname), x.var);
         if ~isfield(tmp, x.var)
             warning('Variable %s not found in: %s', x.var, fname);
             continue
@@ -353,6 +357,55 @@ end
 
 loaded_models = fieldnames(leadfields);
 fprintf('Organised %d model configurations.\n', numel(loaded_models));
+
+% The unshifted source and sensor references are copies of the same base
+% geometry (and, for the FEM, are solved on the same mesh), so their lead
+% fields are identical. If one was not computed or not found, the other
+% stands in under both names, so no stage skips a whole perturbation type
+% for want of its reference.
+src_ref = sensitivity_ref_key; sen_ref = sensor_sensitivity_ref_key;
+for mf = {'bem', 'fem', 'bslaw', 'sphere'}
+    a_ = [mf{1} '_' src_ref]; b_ = [mf{1} '_' sen_ref];
+    if isfield(leadfields, a_) && ~isfield(leadfields, b_)
+        leadfields.(b_) = leadfields.(a_);
+        if isfield(abs_max_per_source, a_), abs_max_per_source.(b_) = abs_max_per_source.(a_); end
+        fprintf('  %s not found: using %s (the same unshifted geometry)\n', b_, a_);
+        scale_log(end+1, :) = {b_, ['copy of ' a_], NaN, 'unshifted reference stand-in'}; %#ok<SAGROW>
+    elseif isfield(leadfields, b_) && ~isfield(leadfields, a_)
+        leadfields.(a_) = leadfields.(b_);
+        if isfield(abs_max_per_source, b_), abs_max_per_source.(a_) = abs_max_per_source.(b_); end
+        fprintf('  %s not found: using %s (the same unshifted geometry)\n', a_, b_);
+        scale_log(end+1, :) = {a_, ['copy of ' b_], NaN, 'unshifted reference stand-in'}; %#ok<SAGROW>
+    end
+end
+loaded_models = fieldnames(leadfields);
+
+% What was expected and what was found, per method and perturbation type,
+% so a gap (a missing reference, a misnamed folder) is visible here rather
+% than as a silently missing method in the analysis
+fprintf('\nCoverage (found / expected):\n');
+meth_flags = struct('bem', have_bem, 'fem', have_fem, 'bslaw', have_bslaw, 'sphere', have_sphere);
+sets = {'source', source_geom_names; 'sensor', sensor_geom_names};
+for mf = fieldnames(meth_flags)'
+    if ~meth_flags.(mf{1}), continue; end
+    for q = 1:size(sets, 1)
+        want = cellfun(@(k) [mf{1} '_' k], sets{q, 2}, 'UniformOutput', false);
+        got  = isfield(leadfields, want);
+        fprintf('  %-6s %-6s %2d / %2d', mf{1}, sets{q, 1}, sum(got), numel(want));
+        if ~got(1)
+            fprintf('   REFERENCE MISSING: %s', want{1});
+        end
+        miss = want(~got);
+        if ~isempty(miss) && got(1)
+            fprintf('   missing: %s', strjoin(miss(1:min(3, end)), ', '));
+            if numel(miss) > 3, fprintf(' (+%d more)', numel(miss) - 3); end
+        end
+        fprintf('\n');
+    end
+end
+if have_fem
+    fprintf('  FEM folder searched: %s\n', fem_path);
+end
 
 
 % =========================================================================
@@ -398,6 +451,24 @@ fprintf('\nNext: pt_compute_metrics\n');
 
 
 % ---- Local functions ----
+
+function f = find_lf(root, short, name)
+% One lead-field file, looked for in msg_fwd's layout first
+% (<root>/geometries_<short>/), then directly in <root>, then anywhere
+% below it, so a different folder arrangement still loads. Returns a dir
+% struct with 0 or 1 entries.
+    f = dir(fullfile(root, ['geometries_' short], name));
+    if isempty(f), f = dir(fullfile(root, name)); end
+    if isempty(f)
+        f = dir(fullfile(root, '**', name));
+        f = f(~contains({f.folder}, [filesep 'work']));   % DUNEuro scratch
+        if numel(f) > 1
+            warning('pt_load_leadfields:duplicate', ...
+                '%s found in %d folders under %s; using %s.', name, numel(f), root, f(1).folder);
+            f = f(1);
+        end
+    end
+end
 
 function [s, why] = fixed_scale(method, bem_unit_scale)
     if startsWith(method, 'bem')

@@ -189,6 +189,15 @@ function write_ranking(R, suffix, site_txt, out_dir, ori_head, ori_titles, ref_f
     end
 end
 
+function k = row_key(family, factor)
+% Legend group of one forest-plot row
+    if startsWith(family, 'Perturbation')
+        k = sprintf('%s: %s', family, factor);
+    else
+        k = family;
+    end
+end
+
 function plot_forest(R, meth, suffix, site_txt, out_dir, ori_head, ori_titles, ...
         ref_factor, type_cols, res)
 % RE with CI per factor, one panel per modality, headline orientation, whole
@@ -200,10 +209,14 @@ function plot_forest(R, meth, suffix, site_txt, out_dir, ori_head, ori_titles, .
     fam_cols = containers.Map( ...
         {'Forward model type', 'Sensor noise', 'Perturbation + noise', 'FEM re-meshing'}, ...
         {[0.3 0.3 0.3], [0.6 0.6 0.6], [0.55 0.25 0.60], [0.75 0.75 0.75]});
+    % One marker shape per family (perturbation rows also per type), the
+    % same in every panel, so the plot reads without colour
+    keep_rows = strcmp(R.orientation, ori_head) & strcmp(R.axis_set, 'Array') & ...
+        (~startsWith(R.family, 'Perturbation (') | strcmp(R.method, meth));
+    fkey = @(T, i) row_key(T.family{i}, T.factor{i});
+    all_keys = unique(arrayfun(@(i) fkey(R, i), find(keep_rows), 'UniformOutput', false), 'stable');
     for m = 1:numel(mods)
-        H = R(strcmp(R.modality, mods{m}) & strcmp(R.orientation, ori_head) & ...
-              strcmp(R.axis_set, 'Array') & ...
-              (~startsWith(R.family, 'Perturbation (') | strcmp(R.method, meth)), :);
+        H = R(strcmp(R.modality, mods{m}) & keep_rows, :);
         H = sortrows(H, 're_median', 'ascend');
         ax = nexttile(tl); hold(ax, 'on');
         for i = 1:height(H)
@@ -212,14 +225,28 @@ function plot_forest(R, meth, suffix, site_txt, out_dir, ori_head, ori_titles, .
             else
                 col = type_cols.(H.factor{i});
             end
+            mk = pt_marker(find(strcmp(all_keys, fkey(H, i)), 1));
             lo = H.re_ci_lo(i); hi = H.re_ci_hi(i);
-            if ~isnan(lo), plot(ax, [lo hi], [i i], '-', 'Color', col, 'LineWidth', 2); end
-            plot(ax, H.re_median(i), i, 'o', 'MarkerFaceColor', col, 'MarkerEdgeColor', 'k');
+            if ~isnan(lo)
+                plot(ax, [lo hi], [i i], '-', 'Color', col, 'LineWidth', 2, 'HandleVisibility', 'off');
+            end
+            plot(ax, H.re_median(i), i, mk, 'MarkerFaceColor', col, 'MarkerEdgeColor', 'k', ...
+                'MarkerSize', 7, 'HandleVisibility', 'off');
         end
-        set(ax, 'YTick', 1:height(H), 'YTickLabel', H.row_label, 'XScale', 'log', ...
+        if m == numel(mods)
+            % Legend from proxies drawn in key order, so pt_distinct_markers
+            % gives each the same shape as its rows
+            for q = 1:numel(all_keys)
+                plot(ax, NaN, NaN, pt_marker(q), 'Color', 'k', 'MarkerFaceColor', 'w', ...
+                    'LineStyle', 'none', 'DisplayName', all_keys{q});
+            end
+            legend(ax, 'Location', 'southeast', 'Box', 'off', 'FontSize', 7, 'Interpreter', 'none');
+        end
+        set(ax, 'YTick', 1:height(H), 'YTickLabel', H.row_label, ...
             'TickLabelInterpreter', 'none', 'FontSize', 8, 'TickDir', 'out');
+        xlim(ax, [0, max([H.re_ci_hi; H.re_median], [], 'omitnan') * 1.05]);
         grid(ax, 'on');
-        xlabel(ax, 'RE (%), log scale');
+        xlabel(ax, 'RE (%)');
         title(ax, upper(mods{m}));
     end
     title(tl, sprintf('Every source of error on one scale — %s (%s, whole array; noise at %gx floor)', ...

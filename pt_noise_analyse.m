@@ -509,8 +509,12 @@ shiftval = @(NS, ty, nm, L, c, o) mean(NS.pert.(ty).(fld).(nm)(:, L, :, c, o), 3
                             'DisplayName', subs{b});
                         errorbar(ax, xx, e, e - lo, hi - e, 'LineStyle', 'none', ...
                             'Color', col, 'CapSize', 0, 'HandleVisibility', 'off');
-                        scatter(ax, xx(sg), e(sg), 36, col, 'filled', 'HandleVisibility', 'off');
-                        scatter(ax, xx(~sg), e(~sg), 36, col, 'HandleVisibility', 'off');
+                        % Same shape as the line (pt_distinct_markers gives the
+                        % b-th named line pt_marker(b)); filled = interval excludes 0
+                        scatter(ax, xx(sg), e(sg), 36, col, pt_marker(b), 'filled', ...
+                            'HandleVisibility', 'off');
+                        scatter(ax, xx(~sg), e(~sg), 36, col, pt_marker(b), ...
+                            'HandleVisibility', 'off');
                     end
                     yline(ax, 0, ':k', 'HandleVisibility', 'off');
                     style_level_axis(ax, xpos, lev_lbl, k == numel(tested));

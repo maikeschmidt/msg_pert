@@ -5,11 +5,15 @@ function s = pt_sep_label(separated)
 % a diamond means the bootstrap interval of the difference (or of the
 % correlation) excludes zero. Every figure that uses it says so in its title.
 %
+% The mark is the Unicode white diamond (U+25C7), not a TeX command, so it
+% renders whatever text interpreter MATLAB is set to; draw it with
+% 'Interpreter', 'none'.
+%
 % USAGE:
 %   s = pt_sep_label(separated)
 %
 % OUTPUT:
-%   '\diamond' (TeX) when separated is true, '' otherwise (including NaN or
+%   char(9671), the white diamond, when separated is true, '' otherwise (including NaN or
 %   an empty input, where no interval could be formed).
 %
 % -------------------------------------------------------------------------
@@ -20,7 +24,7 @@ function s = pt_sep_label(separated)
 % Email:  maike.schmidt.23@ucl.ac.uk
 
 if ~isempty(separated) && islogical(separated) && separated(1)
-    s = '\diamond';
+    s = char(9671);
 else
     s = '';
 end

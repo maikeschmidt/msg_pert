@@ -48,6 +48,7 @@ if ~exist(save_dir, 'dir'); mkdir(save_dir); end
 nf    = sim_noise_factors;
 n_ori = numel(sim_orientations);
 n_lev = numel(nf);
+xl     = 1:n_lev;   % noise levels at evenly spaced positions, labelled with their value
 n_sys = numel(sim_systems);
 
 group_order = {'source', 'sensor', 'cond'};
@@ -170,17 +171,17 @@ for gi = 1:n_grp
         for k = 1:n_sys
             if isempty(per_sys{k}); continue; end
             col = sim_systems(k).color;
-            fill(ax, [nf, fliplr(nf)], ...
+            fill(ax, [xl, fliplr(xl)], ...
                  [per_sys{k}.lo(o, :), fliplr(per_sys{k}.hi(o, :))], col, ...
                 'FaceAlpha', 0.12, 'EdgeColor', 'none', 'HandleVisibility', 'off');
-            hh = plot(ax, nf, per_sys{k}.cm(o, :), '-', 'Color', col, ...
+            hh = plot(ax, xl, per_sys{k}.cm(o, :), '-', 'Color', col, ...
                 'LineWidth', pub_line_width, 'Marker', 'o', ...
                 'MarkerSize', pub_marker_size, 'MarkerFaceColor', col);
             leg_h(end+1) = hh; leg_t{end+1} = sim_systems(k).label; %#ok<SAGROW>
         end
 
-        xline(ax, 1, ':', 'Color', [0.5 0.5 0.5], 'HandleVisibility', 'off');
-        set(ax, 'XScale', 'log', 'XTick', nf, ...
+        xline(ax, xl(abs(nf - 1) < 1e-12), ':', 'Color', [0.5 0.5 0.5], 'HandleVisibility', 'off');
+        set(ax, 'XTick', xl, 'XLim', [0.7, n_lev + 0.3], ...
             'XTickLabel', arrayfun(@(f) sprintf('%gx', f), nf, 'UniformOutput', false));
         xlabel(ax, 'Sensor noise (\times system baseline)');
         ylabel(ax, 'r^2  vs original field');
@@ -205,6 +206,8 @@ subtitle(tl, sprintf(['largest shift per family; evoked %g nA\\cdotm @ %g Hz, %d
     sim_dipole_nAm, sim_freq, sim_n_trials), 'FontSize', 9, 'Color', [0.4 0.4 0.4]);
 
 fname = sprintf('worstcase_systems_%s', sim_array);
+pt_distinct_markers(fig);   % one marker shape per series (msg_pert functions/)
+pt_uniform_axes(fig);       % shared axis ranges across panels
 exportgraphics(fig, fullfile(save_dir, [fname '.png']), 'Resolution', 300);
 saveas(fig, fullfile(save_dir, [fname '.fig']));
 close(fig);

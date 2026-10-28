@@ -111,6 +111,7 @@ if isempty(sim_dir); sim_dir = fileparts(which('config_sim')); end
 addpath(sim_dir);
 addpath(fullfile(sim_dir, 'functions'));
 addpath(fileparts(sim_dir));   % msg_pert root (pt_add_functions -> msg_fwd)
+addpath(fullfile(fileparts(sim_dir), 'functions'));   % msg_pert figure helpers (markers, shared axes)
 
 
 % =========================================================================
@@ -369,7 +370,7 @@ sim_systems = struct('label', {}, 'short', {}, 'model', {}, ...
                      'noise_baseline', {}, 'noise_unit', {}, ...
                      'noise_unit_txt', {}, 'bandwidth_hz', {}, 'color', {});
 
-sim_systems(1).label          = 'SQUID MSG';
+sim_systems(1).label          = 'SQUID MSG (BEM)';
 sim_systems(1).short          = 'squid_msg';
 sim_systems(1).model          = 2;      % MSG BEM
 sim_systems(1).noise_baseline = 5;      % fT/sqrt(Hz)  (2-5 typical)
@@ -378,7 +379,7 @@ sim_systems(1).noise_unit_txt = 'fT/sqrt(Hz)';
 sim_systems(1).bandwidth_hz   = 1000;   % up to 1 kHz (clipped to Nyquist)
 sim_systems(1).color          = [0.10, 0.30, 0.80];
 
-sim_systems(2).label          = 'OP-MSG';
+sim_systems(2).label          = 'OP-MSG (BEM)';
 sim_systems(2).short          = 'op_msg';
 sim_systems(2).model          = 2;      % MSG BEM
 sim_systems(2).noise_baseline = 20;     % fT/sqrt(Hz)  (7-20 typical)
@@ -387,7 +388,7 @@ sim_systems(2).noise_unit_txt = 'fT/sqrt(Hz)';
 sim_systems(2).bandwidth_hz   = 150;    % OPM dynamic range rolls off ~150 Hz 
 sim_systems(2).color          = [0.10, 0.60, 0.20];
 
-sim_systems(3).label          = 'ESG';
+sim_systems(3).label          = 'ESG (BEM)';
 sim_systems(3).short          = 'esg';
 sim_systems(3).model          = 3;      % ESG BEM
 sim_systems(3).noise_baseline = 1;      % uV/sqrt(Hz)  (amplifier-noise estimate)

@@ -202,7 +202,11 @@ for t = 1:numel(types)
         method  = T.methods{m};
         ref_key = [method '_' T.ref_key];
         if ~isfield(leadfields, ref_key)
-            fprintf('  [%s/%s] reference %s not loaded — skipped\n', ty, method, ref_key);
+            % pt_load_leadfields already stands either unshifted reference in
+            % for the other, so a missing one here means neither was found
+            warning('pt_compute_metrics:noReference', ...
+                '[%s/%s] reference %s not loaded — every %s %s perturbation skipped.', ...
+                ty, method, ref_key, method, ty);
             continue
         end
         full_keys = cellfun(@(k) [method '_' k], T.keys, 'UniformOutput', false);

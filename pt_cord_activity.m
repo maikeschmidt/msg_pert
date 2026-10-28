@@ -183,7 +183,8 @@ for md = mods
         En  = sys.density * sqrt(cord_fs / 2) / sqrt(noise_n_trials) * randn(size(Yb));
         ax = nexttile(tl);
         plot(ax, t * 1e3, lowpass_fft(Yb + En, bw, cord_fs)', 'Color', [sys.color 0.25]);
-        title(ax, sprintf('%s, BEM, %g trials', sys.label, noise_n_trials));
+        title(ax, sprintf('%s, %g trials', sys.label, noise_n_trials));
+        ax.Tag = 'pt_own_limits';   % noise sets its own scale; noise-free panels share one
         xlabel(ax, 'Time (ms)'); grid(ax, 'on');
     end
     title(tl, sprintf('%s recordings — N13 extent %s, whole array', upper(md), ext_lbl{e_head}), ...
@@ -357,7 +358,7 @@ for k = 1:numel(noise_systems)
             R = pt_compare_two(a, b, true, stats_n_boot, stats_ci_level);
             pair_rows(end+1, :) = pt_compare_row(R, 'fem_vs_bem', ...
                 sprintf('%s, %s', win(w).name, ext_lbl{e}), ...
-                sprintf('%s: FEM vs BEM', regexprep(sys.label, ' \(FEM\)$', ''))); %#ok<SAGROW>
+                sprintf('%s: FEM vs BEM', regexprep(sys.label, ' \((FEM|BEM)\)$', ''))); %#ok<SAGROW>
         end
     end
 end
@@ -380,6 +381,7 @@ if ~isempty(pair_rows)
 end
 
 % Figure per window: critical level vs N13 extent, systems x models
+lv = levels(levels > 0);
 for w = 1:n_win
     Tw = Tcrit(strcmp(Tcrit.window, win(w).name), :);
     if isempty(Tw), continue; end
@@ -389,12 +391,17 @@ for w = 1:n_win
         sys = noise_systems(k);
         sel = strcmp(Tw.short, sys.short);
         if ~any(sel), continue; end
-        y = Tw.critical_factor(sel);
-        y(isinf(y)) = max(levels) * 1.5; y(y == 0) = min(levels(levels > 0)) / 1.5;
+        y = level_position(Tw.critical_factor(sel), lv);
         plot(ax, 1:sum(sel), y, ['o' mstyle.(sys.method)], 'Color', sys.color, ...
             'MarkerFaceColor', sys.color, 'LineWidth', 1.6, 'DisplayName', sys.label);
     end
-    set(ax, 'YScale', 'log'); yline(ax, 1, ':k', 'realistic floor', 'HandleVisibility', 'off');
+    % The simulated noise levels at evenly spaced positions, labelled with
+    % their value, as on every stage-5 noise axis; 'none' and '> max' sit
+    % half a step outside
+    set(ax, 'YTick', [0.5, 1:numel(lv), numel(lv) + 0.5], 'YLim', [0.3, numel(lv) + 0.7], ...
+        'YTickLabel', [{'none'}, arrayfun(@(x) sprintf('%gx', x), lv, 'UniformOutput', false), ...
+                       {sprintf('> %gx', lv(end))}]);
+    yline(ax, level_position(1, lv), ':k', 'realistic floor', 'HandleVisibility', 'off');
     ext_axis(ax, ext_lbl, true); ylabel(ax, 'Critical noise level (\times floor)');
     legend(ax, 'Location', 'bestoutside', 'Box', 'off');
     title(ax, {sprintf('%s: noise level up to which it is still detected, vs N13 extent', win(w).name), ...
@@ -590,6 +597,20 @@ function a = taper(tau, dur, ramp)
     if ramp <= 0, return; end
     if tau < ramp, a = 0.5 * (1 - cos(pi * tau / ramp)); end
     if dur - tau < ramp, a = min(a, 0.5 * (1 - cos(pi * max(dur - tau, 0) / ramp))); end
+end
+
+function p = level_position(c, lv)
+% Position of a critical noise level on an axis that places the simulated
+% levels lv at 1..n: interpolated between neighbouring levels, 0.5 when
+% never detected, n + 0.5 when still detected at the largest level.
+    p = nan(size(c));
+    for i = 1:numel(c)
+        if isinf(c(i)),       p(i) = numel(lv) + 0.5;
+        elseif c(i) <= 0,     p(i) = 0.5;
+        elseif c(i) <= lv(1), p(i) = 1;
+        else, p(i) = interp1(log(lv), 1:numel(lv), log(min(c(i), lv(end))));
+        end
+    end
 end
 
 function Y = lowpass_fft(Y, fc, fs)

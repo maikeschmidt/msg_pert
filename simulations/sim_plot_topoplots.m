@@ -310,6 +310,8 @@ for a = 1:numel(arrays)
 
         fname = sprintf('perfect_topoplot_%s_%s_src%03dmm', ...
             arr, lower(strrep(slot_names{slot}, '-', '')), round(sim_topo_src_mm));
+        pt_distinct_markers(fig);   % one marker shape per series (msg_pert functions/)
+        pt_uniform_axes(fig);       % shared axis ranges across panels
         exportgraphics(fig, fullfile(save_dir, [fname '.png']), 'Resolution', 600);
         saveas(fig, fullfile(save_dir, [fname '.fig']));
         close(fig);

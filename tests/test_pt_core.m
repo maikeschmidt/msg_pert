@@ -14,6 +14,8 @@
 %   - pt_unit_scale picks the right factor for every writer convention
 %   - pt_compute_leadfields writes msg_fwd's file layout and skips existing
 %     files (Biot-Savart route, which needs no FieldTrip)
+%   - pt_distinct_markers gives every named series its own marker shape
+%   - pt_uniform_axes shares y across rows and x across columns
 %
 % USAGE:
 %   Run from anywhere with msg_pert and msg_fwd as sibling folders:
@@ -135,6 +137,31 @@ end
 Rl = pt_compute_leadfields('bslaw', gd, {'k1'}, fullfile(gd, 'bs'));
 n_fail = n_fail + check('existing file skipped on rerun', ...
     double(Rl.written == 0 && Rl.skipped == 1), 1, 0);
+
+% 9. Every named series gets its own marker; reference lines untouched --
+fm = figure('Visible', 'off'); axm = axes(fm); hold(axm, 'on');
+for q = 1:3, plot(axm, 1:40, q * (1:40), '-', 'DisplayName', sprintf('s%d', q)); end
+hr = plot(axm, 1:40, zeros(1, 40), ':k', 'HandleVisibility', 'off');
+pt_distinct_markers(fm);
+mks = flipud(findobj(axm, 'Type', 'line', 'HandleVisibility', 'on'));
+mks = {mks.Marker};
+n_fail = n_fail + check('distinct markers on named series', ...
+    double(numel(unique(mks)) == 3 && ~any(strcmp(mks, 'none'))), 1, 0);
+n_fail = n_fail + check('reference line left without marker', double(strcmp(hr.Marker, 'none')), 1, 0);
+close(fm);
+
+% 10. Panels of one row share y, of one column share x; own-limit axes kept --
+fu = figure('Visible', 'off'); tlu = tiledlayout(fu, 2, 2);
+a1 = nexttile(tlu); plot(a1, 1:10, 1:10);
+a2 = nexttile(tlu); plot(a2, 1:10, (1:10) * 5);
+a3 = nexttile(tlu); plot(a3, (1:10) * 3, 1:10);
+a4 = nexttile(tlu); plot(a4, 1:10, 1:10); a4.Tag = 'pt_own_limits'; lim4 = a4.YLim;
+pt_uniform_axes(fu);
+n_fail = n_fail + check('row shares y', double(isequal(a1.YLim, a2.YLim)), 1, 0);
+n_fail = n_fail + check('column shares x', double(isequal(a1.XLim, a3.XLim)), 1, 0);
+n_fail = n_fail + check('own-limit axes untouched', double(isequal(a4.YLim, lim4)), 1, 0);
+n_fail = n_fail + check('no log axes', double(~any(strcmp({a1.YScale, a2.YScale}, 'log'))), 1, 0);
+close(fu);
 
 fprintf('\n%d failure(s)\n', n_fail);
 

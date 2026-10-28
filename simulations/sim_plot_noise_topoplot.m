@@ -192,6 +192,8 @@ for k = 1:n_sys
         fname = sprintf('noisy_topoplot_%s_src%03dmm_%gx_%s_%s', ...
             sim_systems(k).short, round(sim_focus_src_mm), ...
             sim_focus_noise_factor, ax_slug, sim_array);
+        pt_distinct_markers(fig);   % one marker shape per series (msg_pert functions/)
+        pt_uniform_axes(fig);       % shared axis ranges across panels
         exportgraphics(fig, fullfile(save_dir, [fname '.png']), 'Resolution', 600);
         saveas(fig, fullfile(save_dir, [fname '.fig']));
         close(fig);

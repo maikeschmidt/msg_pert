@@ -55,6 +55,7 @@ if ~exist(save_dir, 'dir'); mkdir(save_dir); end
 nf    = sim_noise_factors;
 n_ori = numel(sim_orientations);
 n_lev = numel(nf);
+xl     = 1:n_lev;   % noise levels at evenly spaced positions, labelled with their value
 
 % -------------------------------------------------------------------------
 % Load each system's baseline-variant result
@@ -98,12 +99,12 @@ for o = 1:n_ori
         med = median(R, 1, 'omitnan');
         q1  = prctile(R, 25, 1);  q3 = prctile(R, 75, 1);
         col = S(k).color;
-        fill(ax, [nf, fliplr(nf)], [q1, fliplr(q3)], col, ...
+        fill(ax, [xl, fliplr(xl)], [q1, fliplr(q3)], col, ...
             'FaceAlpha', 0.15, 'EdgeColor', 'none', 'HandleVisibility', 'off');
-        h(k) = plot(ax, nf, med, '-', 'Color', col, 'LineWidth', pub_line_width, ...
+        h(k) = plot(ax, xl, med, '-', 'Color', col, 'LineWidth', pub_line_width, ...
             'Marker', 'o', 'MarkerSize', pub_marker_size, 'MarkerFaceColor', col);
     end
-    xline(ax, 1, '--', 'baseline', 'Color', [0.4 0.4 0.4], ...
+    xline(ax, xl(abs(nf - 1) < 1e-12), '--', 'baseline', 'Color', [0.4 0.4 0.4], ...
         'LabelVerticalAlignment', 'bottom', 'HandleVisibility', 'off');
     format_noise_axis(ax, nf);
     title(ax, sim_ori_display{o}, 'FontWeight', 'bold');
@@ -130,12 +131,12 @@ for o = 1:n_ori
         vals = squeeze(S(k).rsq_mean(o, fidx, :))';
         sds  = squeeze(S(k).rsq_sd(o, fidx, :))';
         col  = S(k).color;
-        fill(ax, [nf, fliplr(nf)], [max(vals-sds,0), fliplr(min(vals+sds,1))], col, ...
+        fill(ax, [xl, fliplr(xl)], [max(vals-sds,0), fliplr(min(vals+sds,1))], col, ...
             'FaceAlpha', 0.15, 'EdgeColor', 'none', 'HandleVisibility', 'off');
-        h(k) = plot(ax, nf, vals, '-', 'Color', col, 'LineWidth', pub_line_width, ...
+        h(k) = plot(ax, xl, vals, '-', 'Color', col, 'LineWidth', pub_line_width, ...
             'Marker', 'o', 'MarkerSize', pub_marker_size, 'MarkerFaceColor', col);
     end
-    xline(ax, 1, '--', 'baseline', 'Color', [0.4 0.4 0.4], ...
+    xline(ax, xl(abs(nf - 1) < 1e-12), '--', 'baseline', 'Color', [0.4 0.4 0.4], ...
         'LabelVerticalAlignment', 'bottom', 'HandleVisibility', 'off');
     format_noise_axis(ax, nf);
     title(ax, sim_ori_display{o}, 'FontWeight', 'bold');
@@ -184,7 +185,8 @@ fprintf('\nsim_plot_original complete.\nFigures: %s\n', save_dir);
 % Local helpers
 % -------------------------------------------------------------------------
 function format_noise_axis(ax, nf)
-    set(ax, 'XScale', 'log', 'XTick', nf, ...
+% Noise levels at evenly spaced positions, labelled with their value
+    set(ax, 'XTick', 1:numel(nf), 'XLim', [0.7, numel(nf) + 0.3], ...
         'XTickLabel', arrayfun(@(f) sprintf('%gx', f), nf, 'UniformOutput', false));
     xlabel(ax, 'Sensor noise (\times system baseline)');
     ylabel(ax, 'r^2  vs noise-free field');
@@ -192,6 +194,8 @@ function format_noise_axis(ax, nf)
 end
 
 function save_fig(fig, save_dir, name)
+    pt_distinct_markers(fig);   % one marker shape per series (msg_pert functions/)
+    pt_uniform_axes(fig);       % shared axis ranges across panels
     exportgraphics(fig, fullfile(save_dir, [name '.png']), 'Resolution', 300);
     saveas(fig, fullfile(save_dir, [name '.fig']));
     close(fig);

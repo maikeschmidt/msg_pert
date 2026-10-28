@@ -28,6 +28,19 @@ if nargin < 4 || isempty(resolution), resolution = 600; end
 if ~exist(save_dir, 'dir'), mkdir(save_dir); end
 
 ok = true;
+% Every series gets its own marker shape, for black-and-white and
+% colour-blind readers
+try
+    pt_distinct_markers(fig);
+catch err
+    warning('pt_save_figure:markers', 'Markers not set on %s: %s', name, err.message);
+end
+% Panels of one figure share their axis ranges, so they compare by eye
+try
+    pt_uniform_axes(fig);
+catch err
+    warning('pt_save_figure:axes', 'Axis limits not shared on %s: %s', name, err.message);
+end
 try
     savefig(fig, fullfile(save_dir, [name '.fig']));
 catch err

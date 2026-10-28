@@ -102,6 +102,10 @@ fprintf('  Axis sets compared: %s\n\n', strjoin(amatch(:, 1)', ', '));
 
 sopts = struct('bundle_names', {bundle_names}, 'n_boot', stats_n_boot, 'level', stats_ci_level);
 colA = modality_colors.msg; colB = modality_colors.esg;
+% Every MSG and ESG label carries the forward model, as the FEM and
+% Biot-Savart ones do elsewhere
+labA = sprintf('MSG (%s)', pt_method_label(meth));
+labB = sprintf('ESG (%s)', pt_method_label(meth));
 vals = @(PM, ty, metric, c, o) pt_shift_summary(PM.pert.(ty).M.(meth), metric, c, o);
 
 
@@ -187,8 +191,8 @@ pt_write_table(Ts, fullfile(out_dir, 'modality_stats'), struct( ...
                'subset', 'Bundle', 'Bundle', '%s'; ...
                'design', 'Design', 'Design', '%s'; ...
                'n_a', 'n', '$n$', '%d'; ...
-               'median_a', 'MSG', 'MSG', '%.3g'; ...
-               'median_b', 'ESG', 'ESG', '%.3g'; ...
+               'median_a', labA, labA, '%.3g'; ...
+               'median_b', labB, labB, '%.3g'; ...
                'estimate', 'MSG-ESG [95% CI]', 'MSG$-$ESG [95\% CI]', 'eci'; ...
                'separated', 'CI excl. 0', 'CI excl.\ 0', 'yn' }}, ...
     'title', 'STAGE 4 — MSG VS ESG DIFFERENCES (noise-free)', ...
@@ -321,8 +325,8 @@ for t = 1:numel(types)
                     R.separated}; %#ok<SAGROW>
             end
             ax = nexttile(tl); hold(ax, 'on');
-            h1 = pt_plot_band(ax, dist, Xa(sa, :), colA, '-', 'MSG');
-            h2 = pt_plot_band(ax, dist, Xb(sb, :), colB, '-', 'ESG');
+            h1 = pt_plot_band(ax, dist, Xa(sa, :), colA, '-', labA);
+            h2 = pt_plot_band(ax, dist, Xb(sb, :), colB, '-', labB);
             yl = ylim(ax);
             plot(ax, dist(sig), repmat(yl(2) - 0.04*diff(yl), 1, sum(sig)), 's', ...
                 'MarkerSize', 3, 'MarkerFaceColor', [0.2 0.2 0.2], 'MarkerEdgeColor', 'none', ...
@@ -369,10 +373,16 @@ for a = 1:size(amatch, 1)
                 if ~isempty(xa)
                     boxchart(ax, (b - 0.18) * ones(size(xa)), xa, 'BoxWidth', 0.3, ...
                         'BoxFaceColor', colA, 'MarkerStyle', 'none');
+                    % Realisations as points, one shape per modality, so the
+                    % two boxes can be told apart without colour
+                    scatter(ax, (b - 0.18) + 0.04*randn(size(xa)), xa, 14, colA, pt_marker(1), ...
+                        'MarkerEdgeColor', 'k', 'HandleVisibility', 'off');
                 end
                 if ~isempty(xb)
                     boxchart(ax, (b + 0.18) * ones(size(xb)), xb, 'BoxWidth', 0.3, ...
                         'BoxFaceColor', colB, 'MarkerStyle', 'none');
+                    scatter(ax, (b + 0.18) + 0.04*randn(size(xb)), xb, 14, colB, pt_marker(2), ...
+                        'MarkerEdgeColor', 'k', 'HandleVisibility', 'off');
                 end
                 row = Ts(strcmp(Ts.perturbation, pert_type_display.(ty)) & ...
                     strcmp(Ts.subset, bundle_names{b}) & strcmp(Ts.metric, tested(k).txt) & ...
@@ -385,7 +395,7 @@ for a = 1:size(amatch, 1)
             ylim(ax, [yl(1), yl(2) + 0.08*diff(yl)]);
             for b = 1:nb
                 text(ax, b, yl(2) + 0.04*diff(yl), stars{b}, ...
-                    'HorizontalAlignment', 'center', 'FontSize', 10);
+                    'HorizontalAlignment', 'center', 'FontSize', 10, 'Interpreter', 'none');
             end
             set(ax, 'XTick', 1:nb, 'XTickLabel', bundle_names, 'TickDir', 'out', ...
                 'FontSize', 9, 'XLim', [0.4 nb + 0.6]);
@@ -393,14 +403,16 @@ for a = 1:size(amatch, 1)
             if k == 1, title(ax, pert_type_display.(ty)); end
             if t == 1, ylabel(ax, tested(k).label); end
             if k == 1 && t == numel(types)
-                hA = plot(ax, NaN, NaN, 's', 'MarkerFaceColor', colA, 'MarkerEdgeColor', 'none');
-                hB = plot(ax, NaN, NaN, 's', 'MarkerFaceColor', colB, 'MarkerEdgeColor', 'none');
-                legend(ax, [hA hB], {'MSG', 'ESG'}, 'Location', 'best', 'Box', 'off');
+                hA = plot(ax, NaN, NaN, pt_marker(1), 'MarkerFaceColor', colA, 'MarkerEdgeColor', 'k', ...
+                    'DisplayName', labA);
+                hB = plot(ax, NaN, NaN, pt_marker(2), 'MarkerFaceColor', colB, 'MarkerEdgeColor', 'k', ...
+                    'DisplayName', labB);
+                legend(ax, [hA hB], {labA, labB}, 'Location', 'best', 'Box', 'off');
             end
         end
     end
     title(tl, sprintf(['MSG vs ESG under identical perturbations — %s axes (%s, %s)\n' ...
-        'one value per realisation; \\diamond = 95%% interval of MSG-ESG excludes 0'], ...
+        'one value per realisation; ◇ = 95%% interval of MSG-ESG excludes 0'], ...
         amatch{a, 1}, pt_method_label(meth), ori_titles.(headline_orientation)), ...
         'FontWeight', 'bold');
     pt_save_figure(fig, out_dir, ['headline_' matlab.lang.makeValidName(amatch{a, 1})], ...
@@ -421,8 +433,8 @@ for t = 1:numel(types)
     ty = types{t};
     ax = nexttile(tl); hold(ax, 'on');
     for side = 1:2
-        if side == 1, PMx = A; col = colA; c = amatch{1, 2}; nm = 'MSG';
-        else,         PMx = B; col = colB; c = amatch{1, 3}; nm = 'ESG'; end
+        if side == 1, PMx = A; col = colA; c = amatch{1, 2}; nm = labA;
+        else,         PMx = B; col = colB; c = amatch{1, 3}; nm = labB; end
         g = vals(PMx, ty, 'gain', c, o_head);
         d = vals(PMx, ty, 'rdm',  c, o_head);
         for b = 1:nb
@@ -450,8 +462,8 @@ for k = 1:numel(tested)
         ty = types{t};
         ax = nexttile(tl); hold(ax, 'on');
         for side = 1:2
-            if side == 1, PMx = A; col = colA; c = amatch{1, 2}; nm = 'MSG';
-            else,         PMx = B; col = colB; c = amatch{1, 3}; nm = 'ESG'; end
+            if side == 1, PMx = A; col = colA; c = amatch{1, 2}; nm = labA;
+            else,         PMx = B; col = colB; c = amatch{1, 3}; nm = labB; end
             x = PMx.pert.(ty).magnitude;
             y = vals(PMx, ty, tested(k).name, c, o_head);
             scatter(ax, x, y, 30, col, 'filled', 'MarkerEdgeColor', 'k', ...
@@ -557,13 +569,13 @@ function diff_map(Ts, types, tdisp, bnames, tested, axsets, oris, out_dir, name,
     for i = 1:numel(rlab)
         for j = 1:numel(clab)
             text(ax, j, i, pt_sep_label(S(i, j)), 'HorizontalAlignment', 'center', ...
-                'FontSize', 8);
+                'FontSize', 8, 'Interpreter', 'none');
         end
     end
     set(ax, 'XTick', 1:numel(clab), 'XTickLabel', clab, 'XTickLabelRotation', 45, ...
         'YTick', 1:numel(rlab), 'YTickLabel', rlab, 'TickLabelInterpreter', 'none', ...
         'FontSize', 8);
     title(ax, {'MSG vs ESG: (MSG - ESG) / mean, error form (1 - r^2 for r^2)', ...
-        '\diamond = 95% interval of the difference excludes 0'});
+        '◇ = 95% interval of the difference excludes 0'});
     pt_save_figure(fig, out_dir, name, res);
 end
