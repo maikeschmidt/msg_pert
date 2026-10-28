@@ -670,7 +670,7 @@ noise_systems = struct( ...
 % space, in the units of the cord axis of every figure (source index x
 % src_spacing_mm). The nearest kept source is used, and stage 5 reports
 % which one.
-evoked_src_mm   = 60;       % SET THIS: cord distance of C7 (mm)
+evoked_src_mm   = 115;       % SET THIS: cord distance of C7 (mm)
 evoked_src_name = 'C7';
 
 % Source waveform: a Gaussian-windowed cosine peaking at noise_latency, so
@@ -682,7 +682,7 @@ evoked_src_name = 'C7';
 noise_fs        = 1500;     % Hz
 noise_duration  = 0.100;    % s
 noise_freq      = 0;        % Hz (0 = monophasic)
-noise_peak_nAm  = 3;        % nA*m
+noise_peak_nAm  = 2;        % nA*m
 noise_latency   = 0.013;    % s  (N13)
 noise_env_sd    = 0.002;    % s  (about 5 ms full width at half maximum)
 noise_n_trials  = 8000;     % trials averaged
@@ -732,8 +732,8 @@ cord_duration      = 0.030;   % s
 cord_n11_onset     = 0.0105;  % s, volley at the entry level
 cord_n11_entry_mm  = evoked_src_mm;    % C7 root entry
 cord_n11_end_mm    = [];      % [] = the rostral end of the source space
-cord_n11_velocity  = 60;      % m/s, dorsal-column conduction
-cord_n11_lag_mm    = 30;      % leading-to-trailing dipole separation (0 = single dipole)
+cord_n11_velocity  = 63;      % m/s, dorsal-column conduction
+cord_n11_lag_mm    = 60;      % leading-to-trailing dipole separation (0 = single dipole)
 cord_n11_nAm       = 2;       % nA*m per dipole
 cord_n11_ramp      = 0.0003;  % s, onset/offset taper of the volley
 cord_n11_ori       = 'RC';    % longitudinal
