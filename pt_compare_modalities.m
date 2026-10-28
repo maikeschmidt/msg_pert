@@ -23,10 +23,11 @@
 % representative the random perturbations are (see pt_compare_two).
 %
 % AXIS MATCHING
-%   MSG is triaxial, ESG has tangential and radial electrodes. Comparisons
-%   are made on the whole array (all axes stacked; needs no matching, and is
-%   the headline) and on matched axes by comparison slot (config_pert:
-%   axis_slot), i.e. ESG tangential vs MSG X and ESG radial vs MSG Z.
+%   MSG is triaxial; the ESG is one set of electrodes, whose potential has no
+%   direction. Comparisons are therefore made on the whole array (all MSG
+%   axes stacked against all electrodes), which needs no matching. Matched-
+%   axis rows are added only for a modality whose axes have a comparison slot
+%   (config_pert: axis_slot); the ESG has none.
 %
 %   The metrics are all ratios (RE, gain) or shape measures (r2, RDM), so
 %   they are dimensionless and comparable although MSG is in fT/nAm and ESG

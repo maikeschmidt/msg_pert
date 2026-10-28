@@ -23,8 +23,10 @@
 %     combined_results_dir - Output for the combined MSG-vs-ESG comparison
 %
 %   Sensor description and method availability (per modality):
-%     sensor_n_axes        - 3 for triaxial MSG, 2 for ESG. Declared, not
-%                            inferred: an electrode count can also divide by 3
+%     sensor_n_axes        - 3 for triaxial MSG, 1 for ESG (one electrode
+%                            set). Declared, not inferred
+%     electrode_copies     - times the geometry stores each sensor (ESG: 2,
+%                            see the ESG block); the loader keeps one copy
 %     sensor_is_meg        - true for MSG, false for ESG
 %     have_bem / have_fem / have_bslaw / have_sphere / have_bem_cond /
 %     have_fem_cond / have_fem_remesh
@@ -167,8 +169,16 @@ mods_cfg.msg.axis_slot            = [1 2 3];   % comparison slot per axis (see b
 mods_cfg.msg.radial_axis          = 3;
 mods_cfg.msg.sensor_shift_dims    = [1 2 3];   % axes the sensor shift was applied in
 mods_cfg.msg.unit                 = 'fT/nAm';
+mods_cfg.msg.electrode_copies     = 1;
 
-% ---- ESG (tangential/radial surface electrodes) -------------------------
+% ---- ESG (surface electrodes) -------------------------------------------
+% One set of electrodes. msg_coreg stores each electrode twice (its ESG array
+% is built from two copies of the magnetometer grid points, which an
+% electrode cannot tell apart: a potential has no orientation), so the
+% loader keeps one copy (electrode_copies, pt_dedup_electrodes). The lead
+% fields are unchanged and need no recomputing; the potential is
+% common-average referenced over the array (msg_coreg's elec.tra, applied
+% by FieldTrip).
 mods_cfg.esg.geoms_path           = esg_geoms_dir;
 mods_cfg.esg.perturbed_geoms_path = esg_geoms_dir;
 mods_cfg.esg.forward_fields_base  = esg_fields_dir;
@@ -178,7 +188,8 @@ mods_cfg.esg.fem_path             = esg_fem_dir;
 mods_cfg.esg.sphere_path          = esg_sphere_dir;
 mods_cfg.esg.bem_cond_path        = esg_bem_cond_dir;
 mods_cfg.esg.save_base_dir        = esg_results_dir;
-mods_cfg.esg.sensor_n_axes        = 2;
+mods_cfg.esg.sensor_n_axes        = 1;    % one electrode set (no sensor axes)
+mods_cfg.esg.electrode_copies     = 2;    % times the geometry stores each electrode
 mods_cfg.esg.sensor_is_meg        = false;
 mods_cfg.esg.have_bem             = true;
 mods_cfg.esg.have_fem             = false;   % DUNEuro solve is MEG only
@@ -188,19 +199,16 @@ mods_cfg.esg.have_bslaw           = false;   % no Biot-Savart for ESG
 mods_cfg.esg.have_sphere          = false;
 mods_cfg.esg.have_bem_cond        = true;
 mods_cfg.esg.display              = 'ESG';
-mods_cfg.esg.axis_names           = {'Tangential', 'Radial'};
-mods_cfg.esg.axis_slot            = [1 3];     % tangential <-> MSG X, radial <-> MSG Z
-mods_cfg.esg.radial_axis          = 2;
+mods_cfg.esg.axis_names           = {'Electrodes'};
+mods_cfg.esg.axis_slot            = 0;     % no MSG axis corresponds: compared on the whole array
+mods_cfg.esg.radial_axis          = 1;
 mods_cfg.esg.sensor_shift_dims    = [1 2];     % ESG sensor shifts hold Z at 0
 mods_cfg.esg.unit                 = 'uV/nAm';
 
-% AXIS SLOTS. MSG and ESG do not have the same sensor axes, so an MSG-vs-ESG
-% comparison needs to know which axes correspond. Slots follow the MSG
-% triaxial convention (1 = X, 2 = Y, 3 = Z); an axis with the same slot in
-% both modalities is compared directly. ESG tangential sits with MSG X and ESG
-% radial with MSG Z. Every comparison is ALSO made on the whole array (all
-% axes stacked), which needs no matching and is the headline cross-modality
-% number.
+% AXIS SLOTS. Which MSG sensor axis a sensor axis of another modality
+% corresponds to (1 = X, 2 = Y, 3 = Z), for matched-axis comparisons. ESG
+% electrodes have no sensor axes (slot 0), so MSG and ESG are compared on the
+% whole array only, which is also the headline for every other comparison.
 
 % Which modalities the master loop should run
 pert_modalities = {'msg', 'esg'};   % SET THIS: e.g. {'msg'} to run MSG only
@@ -243,6 +251,7 @@ fem_path             = M.fem_path;
 sphere_path          = M.sphere_path;
 bem_cond_path        = M.bem_cond_path;
 sensor_n_axes        = M.sensor_n_axes;
+electrode_copies     = M.electrode_copies;
 sensor_is_meg        = M.sensor_is_meg;
 have_bem             = M.have_bem;
 have_fem             = M.have_fem;

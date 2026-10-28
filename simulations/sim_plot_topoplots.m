@@ -99,9 +99,9 @@ for m = 1:n_models
             load_scale = sim_models(m).scale;
         end
         lf_all{m, a} = sim_load_leadfield(file, sim_models(m).var, ...
-            load_scale, sim_models(m).is_meg, sim_models(m).n_axes);
+            load_scale, sim_models(m).is_meg, sim_models(m).n_axes, sim_models(m).n_copies);
         pos_all{m, a} = sim_sensor_positions(sim_geom_file(sim_models(m), geo), ...
-            arr, sim_models(m).is_meg, lf_all{m, a}.n_sensor_axes);
+            arr, sim_models(m).is_meg, lf_all{m, a}.n_sensor_axes, sim_models(m).n_copies);
         fprintf('%d sources, %d axes, %d sensors/axis\n', ...
             lf_all{m, a}.n_sources, lf_all{m, a}.n_sensor_axes, ...
             lf_all{m, a}.n_sensors_per_axis);
@@ -242,7 +242,11 @@ for a = 1:numel(arrays)
             end
 
             % Which of THIS model's axes (if any) sits in this slot?
-            ax = find(sim_models(m).axis_slot(1:lf.n_sensor_axes) == slot, 1);
+            if lf.n_sensor_axes == 1
+                ax = 1;     % one electrode set: shown beside every MSG axis
+            else
+                ax = find(sim_models(m).axis_slot(1:lf.n_sensor_axes) == slot, 1);
+            end
 
             % ── Model has no axis in this slot (ESG in the Y slot) ────────
             if isempty(ax)

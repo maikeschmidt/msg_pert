@@ -107,7 +107,7 @@ dist_mm   = src_range * src_spacing_mm;
 % =========================================================================
 
 fprintf('[1/3] Topoplots\n');
-slot_names = {'X / Tangential', 'Y', 'Z / Radial'};
+slot_names = {'X', 'Y', 'Z'};   % MSG axes; the ESG potential is shown beside each
 
 % The evoked-response source of stage 5 is always shown, so its noise-free
 % fields are on record next to the noisy measurements
@@ -122,13 +122,21 @@ for src_mm = unique([baseline_topo_src_mm(:)', evoked_src_mm])
         for r = 1:numel(models)
             M  = models(r);
             mc = mods_cfg.(M.mod);
-            ax_idx = find(mc.axis_slot == slot, 1);
+            if mc.sensor_n_axes == 1
+                ax_idx = 1;        % one electrode set: the same potential beside every MSG axis
+            else
+                ax_idx = find(mc.axis_slot == slot, 1);
+            end
 
             nexttile(tl, (r-1)*(numel(oris3)+1) + 1);
             if isempty(ax_idx)
                 row_lbl = sprintf('%s\n(no %s axis)', M.label, slot_names{slot});
             else
-                row_lbl = sprintf('%s\n%s axis', M.label, mc.axis_names{ax_idx});
+                if mc.sensor_n_axes == 1
+                    row_lbl = sprintf('%s\n%s', M.label, mc.axis_names{ax_idx});
+                else
+                    row_lbl = sprintf('%s\n%s axis', M.label, mc.axis_names{ax_idx});
+                end
             end
             text(0.5, 0.5, row_lbl, 'HorizontalAlignment', 'center', ...
                 'FontWeight', 'bold', 'FontSize', 10, 'Rotation', 90);
@@ -139,7 +147,7 @@ for src_mm = unique([baseline_topo_src_mm(:)', evoked_src_mm])
                 gfile = fullfile(mc.geoms_path, ['geometries_' ref_geom '.mat']);
                 try
                     pba = sim_sensor_positions(gfile, analysis_array, ...
-                        mc.sensor_is_meg, mc.sensor_n_axes);
+                        mc.sensor_is_meg, mc.sensor_n_axes, mc.electrode_copies);
                     pos = pba{ax_idx};
                     if size(pos, 1) ~= M.E.n_sensors_per_axis
                         warning('Stage 1: %s has %d sensor positions but %d leadfield rows — topoplot skipped.', ...
@@ -195,8 +203,13 @@ amp_rows = {};
 for r = 1:numel(models)
     E      = models(r).E;
     n_ax   = E.n_sensor_axes;
-    cfgs   = [1:n_ax, 0];
-    cnames = [mods_cfg.(models(r).mod).axis_names, {'Array'}];
+    if n_ax > 1
+        cfgs   = [1:n_ax, 0];
+        cnames = [mods_cfg.(models(r).mod).axis_names, {'Array'}];
+    else
+        cfgs   = 0;                 % one sensor set: the array is its only axis
+        cnames = {'Array'};
+    end
     amp(r).cfg_names = cnames;
     for c = 1:numel(cfgs)
         R = nan(numel(oris3), numel(src_range));

@@ -88,7 +88,7 @@ for k = 1:n_sys
         fprintf('  %s: original leadfield missing — system skipped\n', sim_systems(k).label);
         continue
     end
-    lf = sim_load_leadfield(p, model.var, model.scale, model.is_meg, model.n_axes);
+    lf = sim_load_leadfield(p, model.var, model.scale, model.is_meg, model.n_axes, model.n_copies);
     orig_V{k} = flatten_orientations(lf, sim_orientations);
 end
 
@@ -124,7 +124,7 @@ for gi = 1:numel(group_order)
             continue
         end
         if strcmp(geo.kind, 'cond'); sc = model.cond_scale; else; sc = model.scale; end
-        lf = sim_load_leadfield(p, model.var, sc, model.is_meg, model.n_axes);
+        lf = sim_load_leadfield(p, model.var, sc, model.is_meg, model.n_axes, model.n_copies);
 
         V = flatten_orientations(lf, sim_orientations);
         if ~isequal(size(V{1}), size(orig_V{k}{1}))

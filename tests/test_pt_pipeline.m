@@ -11,6 +11,7 @@
 %
 % Checks:
 %   - every stage finishes and writes its main outputs
+%   - the ESG electrode set, stored twice as msg_coreg does, is loaded once
 %   - only back-array files are loaded, and every perturbed leadfield is
 %     scaled to within 10x of its reference
 %   - stage 5 at zero noise reproduces the stage 2 metrics exactly, for the
@@ -73,8 +74,8 @@ n_src  = 60;
 src0   = [zeros(n_src, 1), (0:n_src-1)' * src_spacing_mm, zeros(n_src, 1)];   % mm
 [gx, gy] = meshgrid(linspace(-60, 60, 5), linspace(-20, 320, 12));
 msg_pos0 = [gx(:), gy(:), -60 * ones(numel(gx), 1)];
-esg_pos0 = {[gx(:), gy(:), -50 * ones(numel(gx), 1)], ...
-            [gx(:) + 6, gy(:) + 3, -55 * ones(numel(gx), 1)]};
+% ESG as msg_coreg builds it: one electrode set stored twice
+esg_pos0 = repmat({[gx(:), gy(:), -50 * ones(numel(gx), 1)]}, 1, 2);
 
 src_vec = vertcat(source_shift_vectors{:});
 sen_vec = vertcat(sensor_shift_vectors{:});
@@ -197,6 +198,11 @@ for k = 1:numel(expect)
 end
 
 L = load(fullfile(mods_cfg.msg.forward_fields_base, 'leadfields_organised.mat'), 'scale_log');
+LE = load(fullfile(mods_cfg.esg.forward_fields_base, 'leadfields_organised.mat'), 'leadfields');
+E1 = LE.leadfields.bem_original_source_original;
+n_fail = n_fail + report('ESG duplicated electrodes reduced to one set', ...
+    double(E1.n_sensor_axes == 1 && E1.n_sensors_per_axis == 60), 1, 0);   % 5 x 12 grid
+
 n_fail = n_fail + report('no front-array file loaded', ...
     double(~any(contains(L.scale_log.file, '_front'))), 1, 0);
 

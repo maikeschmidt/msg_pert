@@ -36,7 +36,8 @@ Every perturbation is solved with every model that applies, so one shift can
 be read through all three.
 
 Two **modalities** are supported side by side: **MSG** (triaxial magnetometer
-array) and **ESG** (tangential/radial surface electrodes). Both are configured
+array) and **ESG** (one set of surface electrodes, common-average referenced).
+Both are configured
 in one place and the analysis pipeline loops over them, so nothing has to be
 edited between modalities. A final combined stage compares the two directly.
 

@@ -1,4 +1,4 @@
-function lf = sim_load_leadfield(file, varname, scale, is_meg, n_sensor_axes)
+function lf = sim_load_leadfield(file, varname, scale, is_meg, n_sensor_axes, n_copies)
 % sim_load_leadfield - Load one leadfield .mat and split it by sensor axis
 %
 % Unlike organise_leadfield (msg_fwd), this returns a STANDALONE struct for a
@@ -51,6 +51,8 @@ if ~isfield(tmp, varname)
     error('sim_load_leadfield: variable "%s" not found in:\n  %s', varname, file);
 end
 lf_struct = tmp.(varname);
+% An electrode set stored more than once (msg_coreg's ESG): keep one copy
+if nargin >= 6, lf_struct = pt_dedup_electrodes(lf_struct, n_copies); end
 
 n_sources        = numel(lf_struct.leadfield);
 n_channels_total = size(lf_struct.leadfield{1}, 1);

@@ -103,7 +103,7 @@ for gi = 1:numel(sim_geometries)
             load_scale = model.scale;
         end
         lf = sim_load_leadfield(lf_path, model.var, load_scale, ...
-            model.is_meg, model.n_axes);
+            model.is_meg, model.n_axes, model.n_copies);
         n_src = lf.n_sources;
 
         % Flatten to full channel vector per source, per orientation, and score

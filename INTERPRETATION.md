@@ -171,8 +171,8 @@ between-subject interval. This is one anatomy, perturbed.
 
 **Topoplots.** Unperturbed fields for Biot-Savart, BEM and FEM MSG and BEM ESG,
 one row per model, with a colour scale per row (the units differ). One
-figure per axis slot: X/tangential, Y, Z/radial. ESG has no Y panel, and that
-is shown explicitly rather than dropped. Look for how spatially concentrated
+figure per MSG axis: X, Y, Z. The ESG potential has no direction, so the same
+ESG map appears beside every MSG axis. Look for how spatially concentrated
 each map is: a tight, structured map has more to lose from both a geometric
 error and from noise than a broad, smooth one.
 
@@ -253,10 +253,20 @@ The core comparison. Both modalities use the same forward model type
 dimensionless, so comparing fT/nAm with µV/nAm here is legitimate. What is
 compared is how much each modality's field changes relative to itself.
 
-**Axis sets.** The whole array (all axes stacked) is the headline: it needs
-no correspondence between MSG and ESG axes. Matched-axis rows (ESG
-tangential with MSG X, ESG radial with MSG Z) add detail but compare
-physically different channels, so read them as secondary.
+**Axis sets.** MSG and ESG are compared on the whole array: every MSG axis
+stacked, against every electrode. The ESG is one set of electrodes measuring
+a potential, which has no direction, so there is no ESG channel to match to a
+single MSG axis.
+
+**The ESG electrodes.** msg_coreg builds the ESG array from the grid points of
+the magnetometer array, which a triaxial array holds three times; the stored
+electrode set therefore holds every electrode twice. The copies measure the
+identical potential, so msg_pert keeps one copy on load
+(`pt_dedup_electrodes`, after checking they are identical). The potential is
+common-average referenced over the array (msg_coreg's reference matrix,
+applied by FieldTrip): r² does not depend on that choice, RE, RDM and gain
+do, and a different reference (a single electrode, as often used in ESG
+recordings) would change them.
 
 - **`headline_<axes>`** — every metric × perturbation type, MSG and ESG side
   by side per bundle; ◇ where the interval of MSG − ESG excludes zero.

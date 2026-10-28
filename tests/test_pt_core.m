@@ -16,6 +16,8 @@
 %     files (Biot-Savart route, which needs no FieldTrip)
 %   - pt_distinct_markers gives every named series its own marker shape
 %   - pt_uniform_axes shares y across rows and x across columns
+%   - pt_dedup_electrodes keeps one copy of a duplicated electrode set and
+%     refuses to drop channels that are not copies
 %
 % USAGE:
 %   Run from anywhere with msg_pert and msg_fwd as sibling folders:
@@ -162,6 +164,14 @@ n_fail = n_fail + check('column shares x', double(isequal(a1.XLim, a3.XLim)), 1,
 n_fail = n_fail + check('own-limit axes untouched', double(isequal(a4.YLim, lim4)), 1, 0);
 n_fail = n_fail + check('no log axes', double(~any(strcmp({a1.YScale, a2.YScale}, 'log'))), 1, 0);
 close(fu);
+
+% 11. Duplicated electrode sets reduced to one; real channels never dropped --
+Ld = struct('leadfield', {{[ones(4, 3); ones(4, 3)], [2 * ones(4, 3); 2 * ones(4, 3)]}});
+Ld = pt_dedup_electrodes(Ld, 2);
+n_fail = n_fail + check('dedup keeps one copy', size(Ld.leadfield{1}, 1), 4, 0);
+threw = false;
+try, pt_dedup_electrodes(struct('leadfield', {{rand(8, 3)}}), 2); catch, threw = true; end
+n_fail = n_fail + check('dedup refuses non-identical copies', double(threw), 1, 0);
 
 fprintf('\n%d failure(s)\n', n_fail);
 

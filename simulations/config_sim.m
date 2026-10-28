@@ -202,7 +202,7 @@ cond_extra_scale = 1e15;   % SET TO 1 if run_conductivity_perturbation no longer
 % and the geometry .mat (sensor positions) by sim_geom_file(model, short).
 sim_models = struct('label', {}, 'id', {}, 'method', {}, 'root', {}, ...
                     'cond_root', {}, 'cond_scale', {}, 'geoms_path', {}, 'var', {}, 'scale', {}, ...
-                    'is_meg', {}, 'n_axes', {}, 'axis_names', {}, 'axis_slot', {});
+                    'is_meg', {}, 'n_axes', {}, 'n_copies', {}, 'axis_names', {}, 'axis_slot', {});
 
 % --- Model 1: MSG, Biot-Savart (infinite homogeneous space — smooth fields)
 sim_models(1).label      = 'MSG — Biot-Savart';
@@ -216,6 +216,7 @@ sim_models(1).var        = 'leadfield_bs';
 sim_models(1).scale      = 1;
 sim_models(1).is_meg     = true;
 sim_models(1).n_axes     = 3;
+sim_models(1).n_copies   = 1;
 sim_models(1).axis_names = {'X-axis', 'Y-axis', 'Z-axis'};
 sim_models(1).axis_slot  = [1 2 3];
 
@@ -231,6 +232,7 @@ sim_models(2).var        = 'leadfield_cord';
 sim_models(2).scale      = msg_bem_scale;
 sim_models(2).is_meg     = true;
 sim_models(2).n_axes     = 3;
+sim_models(2).n_copies   = 1;
 sim_models(2).axis_names = {'X-axis', 'Y-axis', 'Z-axis'};
 sim_models(2).axis_slot  = [1 2 3];
 
@@ -245,14 +247,14 @@ sim_models(3).geoms_path = esg_geoms_path;
 sim_models(3).var        = 'leadfield_cord';
 sim_models(3).scale      = esg_scale;
 sim_models(3).is_meg     = false;
-% ESG electrodes are not a Cartesian triad: two electrode sets, tangential and
-% radial. n_axes MUST be stated — the ESG channel count (e.g. 342 = 2 x 171)
-% can be divisible by 3, so any code that guesses the axis count from
-% divisibility will wrongly read it as 3 x 114 and mis-slice the leadfield.
-sim_models(3).n_axes     = 2;
-sim_models(3).axis_names = {'Tangential', 'Radial'};
-% ESG tangential lines up with the MSG X-axis, ESG radial with the MSG Z-axis.
-sim_models(3).axis_slot  = [1 3];
+% ESG electrodes are one set: a potential has no orientation. msg_coreg stores
+% each electrode twice (two copies of the magnetometer grid points), so one
+% copy is kept on load (n_copies, pt_dedup_electrodes); the lead fields are
+% unchanged. The single set is shown beside every MSG axis.
+sim_models(3).n_axes     = 1;
+sim_models(3).n_copies   = 2;
+sim_models(3).axis_names = {'Electrodes'};
+sim_models(3).axis_slot  = [1 2 3];
 
 
 % =========================================================================

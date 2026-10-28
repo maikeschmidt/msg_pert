@@ -175,9 +175,18 @@ for k = 1:numel(loaded_models)
     n_trunc = min(n_trunc, leadfields.(loaded_models{k}).n_sensors_per_axis);
 end
 
-axcfg_ids   = [1:n_axes, 0];
-axcfg_names = [axis_names(:)', {'Array'}];
-axcfg_slot  = [mods_cfg.(active_modality).axis_slot, 0];
+if n_axes > 1
+    axcfg_ids   = [1:n_axes, 0];
+    axcfg_names = [axis_names(:)', {'Array'}];
+    axcfg_slot  = [mods_cfg.(active_modality).axis_slot, 0];
+    radial_cfg  = radial_axis;
+else
+    % One sensor set (ESG): its only "axis" is the whole array
+    axcfg_ids   = 0;
+    axcfg_names = {'Array'};
+    axcfg_slot  = 0;
+    radial_cfg  = 1;
+end
 n_cfg       = numel(axcfg_ids);
 
 fprintf('  %d sources (%d kept), %d sensor axes, %d sensors per axis\n', ...
@@ -261,7 +270,7 @@ PM.ori_labels  = oris;
 PM.axcfg_ids   = axcfg_ids;
 PM.axcfg_names = axcfg_names;
 PM.axcfg_slot  = axcfg_slot;
-PM.radial_cfg  = radial_axis;
+PM.radial_cfg  = radial_cfg;
 PM.n_trunc     = n_trunc;
 if isfield(P, 'remesh')
     if ~isempty(P.remesh.methods), PM.remesh = P.remesh; end

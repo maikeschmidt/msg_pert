@@ -1,4 +1,4 @@
-function pos_by_axis = sim_sensor_positions(geom_file, array_side, is_meg, n_axes)
+function pos_by_axis = sim_sensor_positions(geom_file, array_side, is_meg, n_axes, n_copies)
 % sim_sensor_positions - Sensor positions for one array, split by sensor axis
 %
 % MSG and ESG geometries differ ONLY in their sensor definitions — the source
@@ -17,6 +17,9 @@ function pos_by_axis = sim_sensor_positions(geom_file, array_side, is_meg, n_axe
 %                matching leadfield (lf.n_sensor_axes) so the positions are
 %                guaranteed to line up with the leadfield channel order rather
 %                than relying on the field name to imply it.
+%   n_copies   - (optional, default 1) times the geometry stores each sensor;
+%                one copy is kept, as pt_dedup_electrodes does for the lead
+%                field (msg_coreg stores each ESG electrode twice)
 %
 % OUTPUT:
 %   pos_by_axis - {1 x n_axes} cell, each [n_sens x 3] positions
@@ -77,6 +80,15 @@ end
 % n_axes comes from the leadfield, so a mismatch here means the geometry and
 % the leadfield disagree about the array — which would misalign every topoplot.
 n_total = size(pos, 1);
+if nargin >= 5 && ~isempty(n_copies) && n_copies > 1
+    n1 = n_total / n_copies;
+    if n1 ~= round(n1) || any(any(pos(1:n1, :) ~= pos(n1 + (1:n1), :)))
+        error('sim_sensor_positions: the positions are not %d copies of one set.', n_copies);
+    end
+    pos = pos(1:n1, :);
+    n_total = n1;
+end
+
 if mod(n_total, n_axes) ~= 0
     error(['sim_sensor_positions: %d sensor positions in the "%s" array do not ' ...
            'divide into %d sensor axes.\nGeometry and leadfield disagree about ' ...

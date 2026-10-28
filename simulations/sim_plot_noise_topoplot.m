@@ -104,8 +104,9 @@ for k = 1:n_sys
     else
         load_scale = md.scale;
     end
-    lf  = sim_load_leadfield(lf_path, md.var, load_scale, md.is_meg, md.n_axes);
-    pos = sim_sensor_positions(sim_geom_file(md, geo), sim_array, md.is_meg, lf.n_sensor_axes);
+    lf  = sim_load_leadfield(lf_path, md.var, load_scale, md.is_meg, md.n_axes, md.n_copies);
+    pos = sim_sensor_positions(sim_geom_file(md, geo), sim_array, md.is_meg, ...
+        lf.n_sensor_axes, md.n_copies);
 
     src_idx = round(sim_focus_src_mm / src_spacing_mm) + 1;
     if src_idx > lf.n_sources
