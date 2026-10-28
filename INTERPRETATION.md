@@ -382,6 +382,12 @@ Every stage-5 output exists twice:
 - White noise only. Real recordings add environmental interference, and for
   ESG cardiac artefact, which is far larger than the amplifier floor used
   here. **ESG results are an optimistic bound.**
+- **SQUID-MSG and OP-MSG share one set of sensor positions**, the msg_coreg
+  array about 10 mm from the skin, where OPMs sit. Real SQUID sensors sit
+  several centimetres further out, inside the dewar, and the field falls
+  steeply with distance. The two systems therefore differ here only in noise
+  floor and bandwidth, so **SQUID results are an optimistic bound relative
+  to OP-MSG.**
 - The matched filter assumes the source waveform is known exactly. Real
   analyses estimate it, so the simulated recovery is a best case for every
   system equally.
@@ -424,9 +430,15 @@ response as a recording, every active source summed over time:
   40 mm wide (full width at half maximum) along the cord, with the same
   total moment at every extent.
 
-`source_model.png` shows both on a cord × time map; `recordings_<modality>`
-shows the noise-free recordings per model and one noisy realisation per
-system. Every number is computed in two windows: the N11 window (the
+`source_model.png` shows both on a cord × time map. `recordings_<modality>`
+shows each recording the way an evoked response is read in real data: the
+RMS over all channels against time (a global field power), noise-free (black)
+and in three noisy realisations at 1× the floor, against the RMS of the noise
+alone (dashed), one row per sensor technology and one column per forward
+model, with the N11 and N13 windows shaded. It is the figure to set beside an
+empirical average with the same number of trials. Every system is analysed in
+at most `cord_max_bandwidth_hz` (1 kHz), as a real analysis band would be;
+OP-MSG keeps its own 150 Hz. Every number is computed in two windows: the N11 window (the
 volley's travel) and the N13 window (its peak ± 2 s.d.). Each system's
 bandwidth is applied, so a narrow-band system smears the fast N11 as it
 would in a real recording.
@@ -439,8 +451,12 @@ can say three things, one per output:
 
 | Output | Question | How to read it |
 |---|---|---|
+| `spread_effect`, `cord_spread_effect` | how much does spreading change the recording at all, within one model? | Read this first. It bounds every other extent effect: if a 40 mm N13 changes the recording by only a few percent against a focal one, no measure below can change by much more. That is the physics of a deep source blurred along the cord by much less than its depth. |
 | `divergence`, `cord_divergence` | do BEM and FEM disagree more as the N13 spreads? | RE/RDM rising with extent: the solvers' difference grows for spread activity, so the choice of model matters more there. Flat: it does not depend on extent. |
-| `detectability_<window>`, `cord_critical_levels`, `cord_bem_vs_fem_noise` | is a spread N13 more or less visible through each system's noise, under each model? | critical noise level against extent, solid BEM, dashed FEM. A FEM curve above the BEM curve means the FEM predicts a more detectable recording for that extent. |
+| `snr_by_system` | which system, through which model, gives the strongest N11 and N13? | SNR at 1× the floor at the headline extent, bars grouped by sensor technology, one bar (and shape) per model. Exact, no noise draws. |
+| `detection_vs_noise` | how far is each system from detecting each component? | Fraction of noise realisations detected against noise level. Where a curve crosses the 80% line is its critical level; where it sits at 1× is what a real recording with these trials would show. |
+| `detectability_snr`, `cord_snr` | is a spread N13 more or less visible through each system's noise, under each model? | SNR against extent, as % of the focal N13 (top) and relative to the BEM system with the same sensors (bottom, 1 = identical). Exact, so changes of a few percent are visible. |
+| `detectability_<window>`, `cord_critical_levels`, `cord_bem_vs_fem_noise` | up to what noise level is each component still detected? | The coarser summary. Built from noise draws, so it moves in steps: a change of a few percent in SNR usually leaves it unchanged. Equal critical levels across extents with a slightly falling SNR mean the extent effect is real but small. Above 1× = visible in a real recording. |
 | `perturbation_<modality>`, `cord_perturbation_bem_vs_fem` | does spreading make either model more or less robust to the source, sensor and conductivity errors? | FEM minus BEM per extent, paired by realisation; FEM source shifts against the grey re-meshing band. |
 
 Whether the FEM is the better model for wider sources is then tested on

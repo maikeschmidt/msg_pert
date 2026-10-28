@@ -12,6 +12,8 @@
 %
 % and asks, as the N13 spreads:
 %
+%   A0. Spread effect     how much does spreading change the recording at
+%                         all, within one model? (bounds every effect below)
 %   A. Model divergence   how different are the BEM-, FEM- and Biot-Savart-
 %                         predicted recordings? (MRI-derived BEM reference)
 %   B. Detectability      how well is each component recovered through each
@@ -38,7 +40,10 @@
 %   filter smears the N11 back into it for narrow-band systems). The
 %   critical noise
 %   level is where the detection rate falls below noise_detect_rate
-%   (pt_critical_level, as in stage 5). Noise draws are shared across
+%   (pt_critical_level, as in stage 5), over stage 7's own wider range of
+%   noise levels (cord_noise_factors: the pooled window test stays sensitive
+%   far above the floor, so stage 5's range would leave every component
+%   detected at its top level). Noise draws are shared across
 %   extents and across BEM, FEM and Biot-Savart for the same sensors.
 %
 % USAGE:
@@ -49,9 +54,14 @@
 %
 % OUTPUT (to <stage_results_dir>/7_cord_activity/):
 %   source_model.png                  the simulated activity, cord x time
+%   spread_effect.png, cord_spread_effect.*   A0
 %   recordings_<modality>.png         noise-free recordings per model, and
 %                                     one noisy realisation per system
 %   divergence.png, cord_divergence.* A
+%   snr_by_system.png                 B: SNR at 1x per system and model
+%   detection_vs_noise.png            B: detection rate against noise level
+%   detectability_snr.png, cord_snr.* B: exact SNR vs N13 extent, relative to
+%                                     the focal N13 and to the BEM
 %   detectability_<window>.png        B: critical noise level vs N13 extent
 %   cord_detectability.csv            B: every system, extent, level, window
 %   cord_critical_levels.*            B
@@ -86,7 +96,7 @@ fwhms  = cord_n13_fwhm_mm(:)';
 n_ext  = numel(fwhms);
 e_head = find(fwhms == cord_n13_head_fwhm, 1);
 if isempty(e_head), e_head = min(2, n_ext); end
-levels = [0, noise_factors(:)'];
+levels = [0, cord_noise_factors(:)'];   % stage 7's own, wider range (config_pert)
 n_lev  = numel(levels);
 L_ref  = find(abs(levels - noise_reference_factor) < 1e-12, 1);
 ext_lbl = arrayfun(@(f) sprintf('%g mm', f), fwhms, 'UniformOutput', false);
@@ -161,35 +171,144 @@ end
 title(tl, 'Simulated cord activity after median nerve stimulation', 'FontWeight', 'bold');
 pt_save_figure(fig, out_dir, 'source_model', fig_resolution);
 
+% Recordings as field strength over time: the RMS over every channel of the
+% trial-averaged recording (a global field power), which is how an evoked
+% response is read in real data and can be set beside an empirical average.
+% Rows = sensor technology, columns = forward model; in each panel the
+% noise-free recording, three noisy realisations at 1x the floor, and the
+% expected RMS of the noise alone.
+techs = unique(regexprep({noise_systems.short}, '_(bs|fem)$', ''), 'stable');
 for md = mods
     md = md{1}; X = D.(md); %#ok<FXSET>
+    tk = techs(cellfun(@(s) any(strcmp({noise_systems.short}, s) & ...
+        strcmp({noise_systems.modality}, md)), techs));
     meths = intersect({'bem', 'fem', 'bslaw'}, methods_with(X.LF, X.ref), 'stable');
-    sys_md = noise_systems(strcmp({noise_systems.modality}, md) & ...
-                           strcmp({noise_systems.method}, 'bem'));
-    fig = figure('Color', 'w', 'Position', [40 40 380 * (numel(meths) + numel(sys_md)), 380]);
-    tl  = tiledlayout(1, numel(meths) + numel(sys_md), 'TileSpacing', 'compact');
-    for k = 1:numel(meths)
-        Y = rec(X.LF.([meths{k} '_' X.ref]), X.Q(e_head), X.PM);
-        ax = nexttile(tl);
-        plot(ax, t * 1e3, Y', 'Color', [mcol.(meths{k}) 0.25]);
-        title(ax, sprintf('%s %s, noise-free', upper(md), mlab.(meths{k})));
-        xlabel(ax, 'Time (ms)'); ylabel(ax, mods_cfg.(md).unit(1:find(mods_cfg.(md).unit == '/', 1) - 1));
-        grid(ax, 'on');
+    if isempty(tk) || isempty(meths), continue; end
+    unit_s = mods_cfg.(md).unit(1:find(mods_cfg.(md).unit == '/', 1) - 1);
+    fig = figure('Color', 'w', 'Position', [40 40 380 * numel(meths) + 120, 300 * numel(tk) + 140]);
+    tl  = tiledlayout(numel(tk), numel(meths), 'TileSpacing', 'compact');
+    for q = 1:numel(tk)
+        base = noise_systems(strcmp({noise_systems.short}, tk{q}));
+        bw   = min([base.bandwidth_hz, cord_fs / 2, cord_max_bandwidth_hz]);
+        sd   = base.density * sqrt(bw) / sqrt(noise_n_trials);   % noise s.d. per sample at 1x
+        for k = 1:numel(meths)
+            ax = nexttile(tl); hold(ax, 'on');
+            k_sys = find(strcmp({noise_systems.modality}, md) & ...
+                strcmp(regexprep({noise_systems.short}, '_(bs|fem)$', ''), tk{q}) & ...
+                strcmp({noise_systems.method}, meths{k}), 1);
+            if isempty(k_sys)
+                text(ax, 0.5, 0.5, sprintf('%s not simulated\nwith %s', base.label, mlab.(meths{k})), ...
+                    'Units', 'normalized', 'HorizontalAlignment', 'center', 'Color', [0.5 0.5 0.5], ...
+                    'Interpreter', 'none');
+                axis(ax, 'off'); continue
+            end
+            sys = noise_systems(k_sys);
+            Y0  = lowpass_fft(rec(X.LF.([meths{k} '_' X.ref]), X.Q(e_head), X.PM), bw, cord_fs);
+            for w = 1:n_win
+                patch(ax, 1e3 * win(w).t([1 2 2 1]), [0 0 1 1] * 1e9, [0.92 0.92 0.92], ...
+                    'EdgeColor', 'none', 'HandleVisibility', 'off');
+            end
+            rng(noise_seed + q);
+            for r = 1:3
+                En = lowpass_fft(base.density * sqrt(cord_fs / 2) / sqrt(noise_n_trials) * ...
+                    randn(size(Y0)), bw, cord_fs);
+                plot(ax, t * 1e3, sqrt(mean((Y0 + En).^2, 1)), '-', 'Color', [sys.color 0.45], ...
+                    'LineWidth', 0.8, 'HandleVisibility', 'off');
+            end
+            plot(ax, t * 1e3, sqrt(mean(Y0.^2, 1)), '-', 'Color', 'k', 'LineWidth', 2, ...
+                'DisplayName', 'noise-free');
+            yline(ax, sd, '--', 'Color', sys.color, 'LineWidth', 1.4, 'HandleVisibility', 'off');
+            ylim(ax, [0, max([sqrt(mean(Y0.^2, 1)), 2.5 * sd]) * 1.1]);
+            xlim(ax, 1e3 * [t(1), t(end)]);
+            grid(ax, 'on'); set(ax, 'TickDir', 'out', 'FontSize', 9, 'Layer', 'top');
+            if q == 1, title(ax, mlab.(meths{k})); end
+            if k == 1, ylabel(ax, sprintf('%s\nRMS over channels (%s)', base.label, unit_s)); end
+            if q == numel(tk), xlabel(ax, 'Time after stimulus (ms)'); end
+            text(ax, 1e3 * win(1).t(1), 0, ' N11', 'VerticalAlignment', 'bottom', 'FontSize', 8);
+            text(ax, 1e3 * win(2).t(1), 0, ' N13', 'VerticalAlignment', 'bottom', 'FontSize', 8);
+        end
     end
-    Yb = rec(X.LF.(['bem_' X.ref]), X.Q(e_head), X.PM);
-    rng(noise_seed);
-    for k = 1:numel(sys_md)
-        sys = sys_md(k); bw = min(sys.bandwidth_hz, cord_fs / 2);
-        En  = sys.density * sqrt(cord_fs / 2) / sqrt(noise_n_trials) * randn(size(Yb));
-        ax = nexttile(tl);
-        plot(ax, t * 1e3, lowpass_fft(Yb + En, bw, cord_fs)', 'Color', [sys.color 0.25]);
-        title(ax, sprintf('%s, %g trials', sys.label, noise_n_trials));
-        ax.Tag = 'pt_own_limits';   % noise sets its own scale; noise-free panels share one
-        xlabel(ax, 'Time (ms)'); grid(ax, 'on');
-    end
-    title(tl, sprintf('%s recordings — N13 extent %s, whole array', upper(md), ext_lbl{e_head}), ...
+    title(tl, {sprintf(['%s recordings, N13 %s wide, %g trials — RMS over channels'], ...
+        upper(md), ext_lbl{e_head}, noise_n_trials), ...
+        'black = noise-free; coloured = 3 noisy realisations at 1\times floor; dashed = noise alone; grey = N11, N13 windows'}, ...
         'FontWeight', 'bold');
     pt_save_figure(fig, out_dir, ['recordings_' md], fig_resolution);
+end
+
+
+% =========================================================================
+% A0. DOES SPREADING CHANGE THE RECORDING AT ALL? (each model, vs its focal N13)
+% =========================================================================
+% Every later comparison is a ratio of two recordings of the same activity,
+% so it can only depend on extent as far as spreading changes the recording
+% itself. This measures that directly: each extent against the focal N13,
+% within one model. Values of a few percent mean every extent effect below
+% will be small, and that is the physics (a deep source, blurred along the
+% cord by much less than its depth), not a fault.
+
+fprintf('[A0] Spread vs focal\n');
+e_foc = find(fwhms == 0, 1);
+if isempty(e_foc), e_foc = 1; end
+sp_rows = {};
+for md = mods
+    md = md{1}; X = D.(md); %#ok<FXSET>
+    for mt = intersect({'bem', 'fem', 'bslaw'}, methods_with(X.LF, X.ref), 'stable')
+        E  = X.LF.([mt{1} '_' X.ref]);
+        Y0 = rec(E, X.Q(e_foc), X.PM);
+        for e = setdiff(1:n_ext, e_foc)
+            Ye = rec(E, X.Q(e), X.PM);
+            for w = 1:n_win
+                M = vec_metrics(Y0(:, win(w).idx), Ye(:, win(w).idx), mopts);
+                sp_rows(end+1, :) = {upper(md), mlab.(mt{1}), mt{1}, fwhms(e), ...
+                    win(w).name, M.re, M.rsq, M.rdm, M.gain}; %#ok<SAGROW>
+            end
+        end
+    end
+end
+Tsp = cell2table(sp_rows, 'VariableNames', {'modality', 'model', 'method', ...
+    'n13_fwhm_mm', 'window', 're', 'rsq', 'rdm', 'gain'});
+Tsp.group = strcat(Tsp.modality, {' — '}, Tsp.model);
+pt_write_table(Tsp, fullfile(out_dir, 'cord_spread_effect'), struct( ...
+    'cols', {{ 'window', 'Window', 'Window', '%s'; ...
+               'n13_fwhm_mm', 'N13 FWHM mm', 'N13 FWHM (mm)', '%g'; ...
+               're', 'RE %', 'RE (\%)', '%.2f'; ...
+               'rsq', 'r2', '$r^2$', '%.4f'; ...
+               'rdm', 'RDM', 'RDM', '%.4f'; ...
+               'gain', 'gain %', 'Gain (\%)', '%+.2f' }}, ...
+    'title', 'STAGE 7 — HOW MUCH SPREADING THE N13 CHANGES THE RECORDING (each model vs its focal N13)', ...
+    'notes', {{'Reference = the same model''s recording with a focal N13; same total moment at every extent.', ...
+               'Small values here bound every extent effect in the divergence, detectability and perturbation outputs.'}}, ...
+    'caption', ['Change in the simulated recording when the N13 is spread along ' ...
+               'the cord, relative to a focal N13 of the same total moment, per ' ...
+               'forward model.'], ...
+    'label', 'tab:cord-spread', 'group_by', 'group'));
+
+if ~isempty(sp_rows)
+    ext_sp = setdiff(1:n_ext, e_foc);
+    pm_ = {'re', 'RE vs focal (%)'; 'rdm', 'RDM vs focal'; 'gain', 'Gain vs focal (%)'};
+    fig = figure('Color', 'w', 'Position', [40 40 420 * n_win, 300 * size(pm_, 1) + 120]);
+    tl  = tiledlayout(size(pm_, 1), n_win, 'TileSpacing', 'compact');
+    grp = unique(strcat(Tsp.modality, '|', Tsp.method), 'stable');
+    for r = 1:size(pm_, 1)
+        for w = 1:n_win
+            ax = nexttile(tl); hold(ax, 'on');
+            for q = 1:numel(grp)
+                gm = strsplit(grp{q}, '|');
+                sel = strcmp(Tsp.modality, gm{1}) & strcmp(Tsp.method, gm{2}) & ...
+                      strcmp(Tsp.window, win(w).name);
+                plot(ax, 1:sum(sel), Tsp.(pm_{r, 1})(sel), mstyle.(gm{2}), ...
+                    'Color', mcol.(gm{2}), 'LineWidth', 1.6, ...
+                    'DisplayName', sprintf('%s (%s)', gm{1}, mlab.(gm{2})));
+            end
+            ext_axis(ax, ext_lbl(ext_sp), r == size(pm_, 1));
+            if r == 1, title(ax, sprintf('%s window', win(w).name)); end
+            if w == 1, ylabel(ax, pm_{r, 2}); end
+            if r == 1 && w == n_win, legend(ax, 'Location', 'best', 'Box', 'off'); end
+        end
+    end
+    title(tl, ['How much spreading the N13 changes the recording — each model against ' ...
+        'its focal N13 (noise-free, whole array)'], 'FontWeight', 'bold');
+    pt_save_figure(fig, out_dir, 'spread_effect', fig_resolution);
 end
 
 
@@ -280,7 +399,7 @@ for k = 1:numel(noise_systems)
         continue
     end
     fprintf('  %s\n', sys.label);
-    bw    = min(sys.bandwidth_hz, cord_fs / 2);
+    bw    = min([sys.bandwidth_hz, cord_fs / 2, cord_max_bandwidth_hz]);
     sd0   = sys.density * sqrt(cord_fs / 2) / sqrt(noise_n_trials);   % per sample, before low-pass
     % Shared noise draws: same stream for every system with these sensors
     k_rng = find(strcmp(all_short, regexprep(sys.short, '_(bs|fem)$', '')), 1);
@@ -379,6 +498,146 @@ if ~isempty(pair_rows)
                    noise_reference_factor), ...
         'label', 'tab:cord-fem-bem-noise'));
 end
+
+% SNR against N13 extent: the exact detectability measure. It is computed
+% from the noise-free recording and the noise level, with no noise draws,
+% so it resolves the small changes that spreading produces; the critical
+% level, built from noise_n_real draws per level, moves only in steps and
+% stays the same when the SNR changes by a few percent.
+snr_rows = {};
+for k = 1:numel(noise_systems)
+    sys = noise_systems(k);
+    Tk  = Tcrit(strcmp(Tcrit.short, sys.short), :);
+    if isempty(Tk), continue; end
+    Tb  = Tcrit(strcmp(Tcrit.short, regexprep(sys.short, '_(bs|fem)$', '')), :);
+    for w = 1:n_win
+        Tw_ = Tk(strcmp(Tk.window, win(w).name), :);
+        f0  = Tw_.snr_at_floor(Tw_.n13_fwhm_mm == fwhms(e_foc));
+        if isempty(f0), f0 = NaN; end
+        for i = 1:height(Tw_)
+            sb = Tb.snr_at_floor(strcmp(Tb.window, win(w).name) & ...
+                                 Tb.n13_fwhm_mm == Tw_.n13_fwhm_mm(i));
+            if isempty(sb), sb = NaN; end
+            snr_rows(end+1, :) = {sys.label, sys.short, Tw_.model{i}, win(w).name, ...
+                Tw_.n13_fwhm_mm(i), Tw_.snr_at_floor(i), 100 * Tw_.snr_at_floor(i) / f0, ...
+                Tw_.snr_at_floor(i) / sb(1)}; %#ok<SAGROW>
+        end
+    end
+end
+Tsnr = cell2table(snr_rows, 'VariableNames', {'system', 'short', 'model', 'window', ...
+    'n13_fwhm_mm', 'snr_at_floor', 'snr_pct_of_focal', 'snr_ratio_to_bem'});
+Tsnr.group = strcat(Tsnr.window, {' — '}, Tsnr.system);
+pt_write_table(Tsnr, fullfile(out_dir, 'cord_snr'), struct( ...
+    'cols', {{ 'n13_fwhm_mm', 'N13 FWHM mm', 'N13 FWHM (mm)', '%g'; ...
+               'snr_at_floor', 'SNR at 1x', 'SNR at 1$\times$', '%.4g'; ...
+               'snr_pct_of_focal', '% of focal', '\% of focal', '%.1f'; ...
+               'snr_ratio_to_bem', 'vs BEM', 'vs BEM', '%.3f' }}, ...
+    'title', 'STAGE 7 — SIGNAL-TO-NOISE OF EACH COMPONENT VS N13 EXTENT (whole array)', ...
+    'notes', {{'SNR = rms of the noise-free recording in the window / noise s.d. per sample at 1x the floor, after the system bandwidth. Exact: no noise draws.', ...
+               '% of focal: against the same system with a focal N13. vs BEM: against the BEM system with the same sensors (1 = identical).'}}, ...
+    'caption', ['Signal-to-noise of the N11 and N13 per sensor system and forward ' ...
+               'model, as the N13 spreads along the cord.'], ...
+    'label', 'tab:cord-snr', 'group_by', 'group'));
+
+% Against extent: relative to the focal N13, and each model relative to the
+% BEM, where a few percent is visible (absolute SNR is in snr_by_system)
+pm_ = {'snr_pct_of_focal', 'SNR, % of focal N13'; 'snr_ratio_to_bem', 'SNR relative to BEM'};
+fig = figure('Color', 'w', 'Position', [40 40 460 * n_win + 160, 340 * size(pm_, 1) + 120]);
+tl  = tiledlayout(size(pm_, 1), n_win, 'TileSpacing', 'compact');
+for r = 1:size(pm_, 1)
+    for w = 1:n_win
+        ax = nexttile(tl); hold(ax, 'on');
+        for k = 1:numel(noise_systems)
+            sys = noise_systems(k);
+            sel = strcmp(Tsnr.short, sys.short) & strcmp(Tsnr.window, win(w).name);
+            if ~any(sel), continue; end
+            plot(ax, 1:sum(sel), Tsnr.(pm_{r, 1})(sel), mstyle.(sys.method), ...
+                'Color', sys.color, 'LineWidth', 1.6, 'DisplayName', sys.label);
+        end
+        ext_axis(ax, ext_lbl, r == size(pm_, 1));
+        if r == 1, title(ax, sprintf('%s window', win(w).name)); end
+        if w == 1, ylabel(ax, pm_{r, 2}); end
+        if r == 1 && w == n_win, legend(ax, 'Location', 'bestoutside', 'Box', 'off'); end
+    end
+end
+title(tl, {'Signal-to-noise vs N13 extent — exact, no noise draws (whole array)', ...
+    'top: against the same system with a focal N13; bottom: against the BEM system with the same sensors (1 = identical)'}, ...
+    'FontWeight', 'bold');
+pt_save_figure(fig, out_dir, 'detectability_snr', fig_resolution);
+
+% SNR at 1x per sensor technology and model, at the headline extent: the
+% direct comparison of systems
+sel_e = Tsnr.n13_fwhm_mm == fwhms(e_head);
+techs_all = unique(regexprep(Tsnr.short(sel_e), '_(bs|fem)$', ''), 'stable');
+mod_order = {'bem', 'fem', 'bslaw'};
+fig = figure('Color', 'w', 'Position', [40 40 460 * n_win + 160, 420]);
+tl  = tiledlayout(1, n_win, 'TileSpacing', 'compact');
+for w = 1:n_win
+    ax = nexttile(tl); hold(ax, 'on');
+    Mv = nan(numel(techs_all), numel(mod_order));
+    for q = 1:numel(techs_all)
+        for j = 1:numel(mod_order)
+            sh = techs_all{q};
+            if ~strcmp(mod_order{j}, 'bem'), sh = [sh '_' strrep(mod_order{j}, 'bslaw', 'bs')]; end
+            v = Tsnr.snr_at_floor(sel_e & strcmp(Tsnr.short, sh) & strcmp(Tsnr.window, win(w).name));
+            if ~isempty(v), Mv(q, j) = v(1); end
+        end
+    end
+    hb = bar(ax, Mv, 'grouped');
+    for j = 1:numel(hb)
+        hb(j).FaceColor = mcol.(mod_order{j});
+        hb(j).HandleVisibility = 'off';
+        ok = ~isnan(Mv(:, j));
+        if any(ok)
+            % A shape per model on each bar, so the bars read without colour
+            scatter(ax, hb(j).XEndPoints(ok), hb(j).YEndPoints(ok), 45, 'k', pt_marker(j), ...
+                'filled', 'MarkerFaceColor', 'w', 'DisplayName', mlab.(mod_order{j}));
+        end
+    end
+    tl_lbl = cellfun(@(sh) noise_systems(strcmp({noise_systems.short}, sh)).label, techs_all, ...
+        'UniformOutput', false);
+    set(ax, 'XTick', 1:numel(techs_all), 'XTickLabel', regexprep(tl_lbl, ' \(BEM\)$', ''), ...
+        'TickDir', 'out', 'FontSize', 9);
+    grid(ax, 'on');
+    title(ax, sprintf('%s window', win(w).name));
+    if w == 1, ylabel(ax, 'SNR at 1\times floor'); end
+    if w == n_win, legend(ax, 'Location', 'best', 'Box', 'off'); end
+end
+title(tl, sprintf(['Signal-to-noise per sensor system and forward model — N13 %s wide, ' ...
+    '%g trials'], ext_lbl{e_head}, noise_n_trials), 'FontWeight', 'bold');
+pt_save_figure(fig, out_dir, 'snr_by_system', fig_resolution);
+
+% Detection rate against noise level at the headline extent: how far each
+% system is from detecting each component
+lev_lbl7 = arrayfun(@(x) sprintf('%gx', x), levels, 'UniformOutput', false);
+lev_lbl7{1} = '0';
+tick_i = unique([1, find(abs(log2(max(levels, eps)) - round(log2(max(levels, eps)))) < 1e-9)]);
+fig = figure('Color', 'w', 'Position', [40 40 520 * n_win + 200, 440]);
+tl  = tiledlayout(1, n_win, 'TileSpacing', 'compact');
+for w = 1:n_win
+    ax = nexttile(tl); hold(ax, 'on');
+    for k = 1:numel(noise_systems)
+        sys = noise_systems(k);
+        sel = strcmp(Tdet.short, sys.short) & strcmp(Tdet.window, win(w).name) & ...
+              Tdet.n13_fwhm_mm == fwhms(e_head);
+        if ~any(sel), continue; end
+        plot(ax, 1:sum(sel), Tdet.detect_rate(sel), mstyle.(sys.method), 'Color', sys.color, ...
+            'LineWidth', 1.6, 'DisplayName', sys.label);
+    end
+    xline(ax, find(abs(levels - 1) < 1e-12, 1), ':k', '1\times floor', 'HandleVisibility', 'off');
+    yline(ax, noise_detect_rate, '--k', sprintf('%g%% detected', 100 * noise_detect_rate), ...
+        'HandleVisibility', 'off');
+    set(ax, 'XTick', tick_i, 'XTickLabel', lev_lbl7(tick_i), 'XLim', [0.5, n_lev + 0.5], ...
+        'YLim', [-0.02 1.02], 'TickDir', 'out', 'FontSize', 9);
+    grid(ax, 'on');
+    title(ax, sprintf('%s window', win(w).name));
+    xlabel(ax, 'Noise (\times system floor)');
+    if w == 1, ylabel(ax, 'Fraction of realisations detected'); end
+    if w == n_win, legend(ax, 'Location', 'bestoutside', 'Box', 'off'); end
+end
+title(tl, {sprintf('Detection against noise level — N13 %s wide, %g trials', ext_lbl{e_head}, ...
+    noise_n_trials), 'solid = BEM, dashed = FEM, dotted = Biot-Savart'}, 'FontWeight', 'bold');
+pt_save_figure(fig, out_dir, 'detection_vs_noise', fig_resolution);
 
 % Figure per window: critical level vs N13 extent, systems x models
 lv = levels(levels > 0);

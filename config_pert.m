@@ -679,7 +679,7 @@ noise_systems = struct( ...
 % space, in the units of the cord axis of every figure (source index x
 % src_spacing_mm). The nearest kept source is used, and stage 5 reports
 % which one.
-evoked_src_mm   = 115;       % SET THIS: cord distance of C7 (mm)
+evoked_src_mm   = 85;        % SET THIS: cord distance of C7 (mm)
 evoked_src_name = 'C7';
 
 % Source waveform: a Gaussian-windowed cosine peaking at noise_latency, so
@@ -694,7 +694,7 @@ noise_freq      = 0;        % Hz (0 = monophasic)
 noise_peak_nAm  = 2;        % nA*m
 noise_latency   = 0.013;    % s  (N13)
 noise_env_sd    = 0.002;    % s  (about 5 ms full width at half maximum)
-noise_n_trials  = 8000;     % trials averaged
+noise_n_trials  = 10000;    % trials averaged (as in the empirical OPM recordings)
 
 % Noise levels as multiples of each system's own floor. 0 is always added,
 % so the noise-free result is the first point of every curve.
@@ -747,8 +747,26 @@ cord_n11_nAm       = 2;       % nA*m per dipole
 cord_n11_ramp      = 0.0003;  % s, onset/offset taper of the volley
 cord_n11_ori       = 'RC';    % longitudinal
 cord_n13_ori       = 'VD';    % transverse (dorsal-horn dipole)
-cord_n13_fwhm_mm   = [0, 5, 10, 20, 40];   % N13 extents swept (mm, full width at half maximum)
-cord_n13_head_fwhm = 10;      % extent used for figures that show one extent
+% N13 extents swept (mm, full width at half maximum). Sources are 5 mm apart,
+% so anything under ~10 mm is effectively one source; the dorsal-horn
+% generators of the N13 span roughly C5-C8 (~40-50 mm), so the sweep
+% brackets that range.
+cord_n13_fwhm_mm   = [0, 10, 20, 40, 60, 80];
+cord_n13_head_fwhm = 40;      % extent used for figures that show one extent
+
+% Noise levels for stage 7, as multiples of each system's floor. Much wider
+% than stage 5's: the window detection test pools every sensor and sample,
+% so a component can stay detectable above the floor, and the critical
+% level must lie inside the range to be found. Half-octave steps give it a
+% finer resolution; the exact SNR (cord_snr) resolves smaller changes still.
+% Must include 1.
+cord_noise_factors = 2 .^ (-3:0.5:9);   % 0.125x ... 512x in half-octave steps
+
+% Widest band any system is analysed in. Stage 7 samples at cord_fs, so a
+% system with no bandwidth limit of its own (ESG, Inf) would otherwise carry
+% noise up to cord_fs / 2 = 5 kHz, far beyond any real analysis band. Each
+% system keeps its own narrower limit (OP-MSG 150 Hz).
+cord_max_bandwidth_hz = 1000;
 
 % Figure resolution (dpi)
 fig_resolution = 600;
